@@ -3,6 +3,8 @@ members = [
     "rsmatrix-core",
     "rsmatrix-ffi",
     "rsmatrix-cli",
+    "screensavers/linux",
+    "screensavers/windows",
 ]
 resolver = "2"
 

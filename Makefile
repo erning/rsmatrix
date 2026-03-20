@@ -1,6 +1,6 @@
 RUST_LIB = target/release/librsmatrix_ffi.a
-SWIFT_FILES = screensaver/MatrixSaver/MatrixSaverView.swift screensaver/MatrixSaver/MatrixRenderer.swift
-BRIDGING_HEADER = screensaver/MatrixSaver/rsmatrix-ffi-Bridging.h
+SWIFT_FILES = screensavers/macos/MatrixSaver/MatrixSaverView.swift screensavers/macos/MatrixSaver/MatrixRenderer.swift
+BRIDGING_HEADER = screensavers/macos/MatrixSaver/rsmatrix-ffi-Bridging.h
 BUILD_DIR = build
 SAVER_DIR = $(BUILD_DIR)/MatrixSaver.saver
 
@@ -15,7 +15,7 @@ $(RUST_LIB):
 
 saver: $(RUST_LIB) $(SWIFT_FILES) $(BRIDGING_HEADER)
 	mkdir -p $(SAVER_DIR)/Contents/MacOS
-	cp screensaver/MatrixSaver/Info.plist $(SAVER_DIR)/Contents/
+	cp screensavers/macos/MatrixSaver/Info.plist $(SAVER_DIR)/Contents/
 	swiftc \
 		-emit-library \
 		-module-name MatrixSaver \
