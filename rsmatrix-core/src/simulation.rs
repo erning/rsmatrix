@@ -1,5 +1,5 @@
 use crate::charset::random_char;
-use rand::Rng;
+use rand::RngExt;
 
 /// RGB color constants matching the terminal version.
 const COLOR_GREEN: (u8, u8, u8) = (0, 0xAA, 0);
@@ -65,11 +65,11 @@ pub struct Simulation {
 impl Simulation {
     /// Create a new simulation with the given grid dimensions.
     pub fn new(width: u32, height: u32) -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut columns = Vec::with_capacity(width as usize);
 
         for _ in 0..width {
-            let delay = rng.gen_range(0..9000);
+            let delay = rng.random_range(0..9000);
             columns.push(Column {
                 streams: Vec::new(),
                 spawn_state: SpawnState::Delaying {
@@ -90,7 +90,7 @@ impl Simulation {
     /// Advance the simulation by `delta_ms` milliseconds.
     pub fn tick(&mut self, delta_ms: u32) {
         let delta_ms = delta_ms.min(1000);
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let height = self.height as i32;
         let width = self.width as usize;
         let max_streams = 1 + (self.height as usize) / 10;
@@ -98,8 +98,7 @@ impl Simulation {
         let grid = &mut self.grid;
         let columns = &mut self.columns;
 
-        for col_idx in 0..columns.len() {
-            let column = &mut columns[col_idx];
+        for (col_idx, column) in columns.iter_mut().enumerate() {
 
             // Process spawn delay
             match &mut column.spawn_state {
@@ -107,8 +106,8 @@ impl Simulation {
                     *remaining_ms -= delta_ms as i32;
                     if *remaining_ms <= 0 {
                         if column.streams.len() < max_streams {
-                            let speed = 30 + rng.gen_range(0..110u32);
-                            let length = 10 + rng.gen_range(0..8i32);
+                            let speed = 30 + rng.random_range(0..110u32);
+                            let length = 10 + rng.random_range(0..8i32);
                             column.streams.push(Stream {
                                 speed_ms: speed,
                                 length,
@@ -142,7 +141,7 @@ impl Simulation {
                         // Re-render previous head position with mid-stream color
                         let prev_row = stream.head_pos - 1;
                         if prev_row >= 0 && prev_row < height {
-                            let (r, g, b) = if rng.gen_range(0..100) < 66 {
+                            let (r, g, b) = if rng.random_range(0..100) < 66 {
                                 COLOR_GREEN
                             } else {
                                 COLOR_LIME
@@ -158,7 +157,7 @@ impl Simulation {
 
                         // Render current head position with bright color
                         if stream.head_pos >= 0 && stream.head_pos < height {
-                            let (r, g, b) = if rng.gen_range(0..100) < 33 {
+                            let (r, g, b) = if rng.random_range(0..100) < 33 {
                                 COLOR_SILVER
                             } else {
                                 COLOR_WHITE
@@ -199,13 +198,11 @@ impl Simulation {
             });
 
             // Handle new stream signal
-            if signal_new_stream {
-                if matches!(column.spawn_state, SpawnState::Idle) {
-                    let delay = rng.gen_range(0..9000);
-                    column.spawn_state = SpawnState::Delaying {
-                        remaining_ms: delay,
-                    };
-                }
+            if signal_new_stream && matches!(column.spawn_state, SpawnState::Idle) {
+                let delay = rng.random_range(0..9000);
+                column.spawn_state = SpawnState::Delaying {
+                    remaining_ms: delay,
+                };
             }
         }
     }
@@ -218,12 +215,12 @@ impl Simulation {
         let grid_size = (width as usize) * (height as usize);
         self.grid = vec![Cell::blank(); grid_size];
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let new_len = width as usize;
 
         self.columns.truncate(new_len);
         while self.columns.len() < new_len {
-            let delay = rng.gen_range(0..9000);
+            let delay = rng.random_range(0..9000);
             self.columns.push(Column {
                 streams: Vec::new(),
                 spawn_state: SpawnState::Delaying {
@@ -235,7 +232,7 @@ impl Simulation {
         // Reset existing columns
         for column in &mut self.columns {
             column.streams.clear();
-            let delay = rng.gen_range(0..9000);
+            let delay = rng.random_range(0..9000);
             column.spawn_state = SpawnState::Delaying {
                 remaining_ms: delay,
             };

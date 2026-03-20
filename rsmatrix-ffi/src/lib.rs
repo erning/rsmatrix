@@ -6,6 +6,8 @@ pub extern "C" fn rsmatrix_create(width: u32, height: u32) -> *mut Simulation {
     Box::into_raw(sim)
 }
 
+/// # Safety
+/// `sim` must be a valid pointer returned by `rsmatrix_create`, and must not be used after this call.
 #[no_mangle]
 pub unsafe extern "C" fn rsmatrix_destroy(sim: *mut Simulation) {
     if !sim.is_null() {
@@ -13,6 +15,8 @@ pub unsafe extern "C" fn rsmatrix_destroy(sim: *mut Simulation) {
     }
 }
 
+/// # Safety
+/// `sim` must be a valid pointer returned by `rsmatrix_create`.
 #[no_mangle]
 pub unsafe extern "C" fn rsmatrix_tick(sim: *mut Simulation, delta_ms: u32) {
     if let Some(sim) = sim.as_mut() {
@@ -20,6 +24,8 @@ pub unsafe extern "C" fn rsmatrix_tick(sim: *mut Simulation, delta_ms: u32) {
     }
 }
 
+/// # Safety
+/// `sim` must be a valid pointer returned by `rsmatrix_create`.
 #[no_mangle]
 pub unsafe extern "C" fn rsmatrix_resize(sim: *mut Simulation, width: u32, height: u32) {
     if let Some(sim) = sim.as_mut() {
@@ -27,6 +33,9 @@ pub unsafe extern "C" fn rsmatrix_resize(sim: *mut Simulation, width: u32, heigh
     }
 }
 
+/// # Safety
+/// `sim` must be a valid pointer returned by `rsmatrix_create`.
+/// The returned pointer is valid until the next call to `rsmatrix_tick`, `rsmatrix_resize`, or `rsmatrix_destroy`.
 #[no_mangle]
 pub unsafe extern "C" fn rsmatrix_get_grid(sim: *const Simulation) -> *const Cell {
     if let Some(sim) = sim.as_ref() {
@@ -36,6 +45,8 @@ pub unsafe extern "C" fn rsmatrix_get_grid(sim: *const Simulation) -> *const Cel
     }
 }
 
+/// # Safety
+/// `sim` must be a valid pointer returned by `rsmatrix_create`.
 #[no_mangle]
 pub unsafe extern "C" fn rsmatrix_grid_width(sim: *const Simulation) -> u32 {
     if let Some(sim) = sim.as_ref() {
@@ -45,6 +56,8 @@ pub unsafe extern "C" fn rsmatrix_grid_width(sim: *const Simulation) -> u32 {
     }
 }
 
+/// # Safety
+/// `sim` must be a valid pointer returned by `rsmatrix_create`.
 #[no_mangle]
 pub unsafe extern "C" fn rsmatrix_grid_height(sim: *const Simulation) -> u32 {
     if let Some(sim) = sim.as_ref() {

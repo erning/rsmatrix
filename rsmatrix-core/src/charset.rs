@@ -54,7 +54,7 @@ pub fn get_charset() -> &'static [char] {
     }
 }
 
-pub fn random_char(rng: &mut impl rand::Rng) -> char {
+pub fn random_char(rng: &mut impl rand::RngExt) -> char {
     let chars = get_charset();
-    chars[rng.gen_range(0..chars.len())]
+    chars[rng.random_range(0..chars.len())]
 }

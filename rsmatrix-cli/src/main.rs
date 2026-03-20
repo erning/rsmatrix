@@ -212,9 +212,9 @@ fn main() {
 
 /// Format microseconds as a human-readable duration string matching Go's time.Duration.String().
 fn format_duration_micros(us: u64) -> String {
-    if us >= 1_000_000 && us % 1_000_000 == 0 {
+    if us >= 1_000_000 && us.is_multiple_of(1_000_000) {
         format!("{}s", us / 1_000_000)
-    } else if us >= 1_000 && us % 1_000 == 0 {
+    } else if us >= 1_000 && us.is_multiple_of(1_000) {
         format!("{}ms", us / 1_000)
     } else if us >= 1_000 {
         let ms = us as f64 / 1_000.0;
