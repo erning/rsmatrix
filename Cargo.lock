@@ -318,7 +318,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rsmatrix"
+name = "rsmatrix-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
@@ -326,6 +326,13 @@ dependencies = [
  "crossterm",
  "rand",
  "signal-hook",
+]
+
+[[package]]
+name = "rsmatrix-core"
+version = "0.1.0"
+dependencies = [
+ "rand",
 ]
 
 [[package]]

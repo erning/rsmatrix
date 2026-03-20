@@ -1,0 +1,16 @@
+[package]
+name = "rsmatrix-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Matrix digital rain terminal effect"
+
+[[bin]]
+name = "rsmatrix"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.28"
+crossbeam-channel = "0.5"
+rand = "0.8"
+signal-hook = "0.3"

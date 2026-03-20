@@ -1,4 +1,4 @@
-RUST_LIB = rsmatrix-core/target/release/librsmatrix_core.a
+RUST_LIB = target/release/librsmatrix_core.a
 SWIFT_FILES = screensaver/MatrixSaver/MatrixSaverView.swift screensaver/MatrixSaver/MatrixRenderer.swift
 BRIDGING_HEADER = screensaver/MatrixSaver/rsmatrix-core-Bridging.h
 BUILD_DIR = build
@@ -11,7 +11,7 @@ all: saver
 rust: $(RUST_LIB)
 
 $(RUST_LIB):
-	cd rsmatrix-core && cargo build --release
+	cargo build --release -p rsmatrix-core
 
 saver: $(RUST_LIB) $(SWIFT_FILES) $(BRIDGING_HEADER)
 	mkdir -p $(SAVER_DIR)/Contents/MacOS
@@ -20,7 +20,7 @@ saver: $(RUST_LIB) $(SWIFT_FILES) $(BRIDGING_HEADER)
 		-emit-library \
 		-module-name MatrixSaver \
 		-import-objc-header $(BRIDGING_HEADER) \
-		-L rsmatrix-core/target/release \
+		-L target/release \
 		-lrsmatrix_core \
 		-framework ScreenSaver \
 		-framework AppKit \
@@ -35,5 +35,5 @@ install: saver
 	@echo "Open System Settings > Screen Saver to select it."
 
 clean:
-	cd rsmatrix-core && cargo clean
+	cargo clean
 	rm -rf $(BUILD_DIR)

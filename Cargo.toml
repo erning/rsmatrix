@@ -1,15 +1,9 @@
-[package]
-name = "rsmatrix"
-version = "0.1.0"
-edition = "2021"
-description = "Matrix digital rain terminal effect"
-
-[dependencies]
-clap = { version = "4", features = ["derive"] }
-crossterm = "0.28"
-crossbeam-channel = "0.5"
-rand = "0.8"
-signal-hook = "0.3"
+[workspace]
+members = [
+    "rsmatrix-core",
+    "rsmatrix-cli",
+]
+resolver = "2"
 
 [profile.release]
 opt-level = 3

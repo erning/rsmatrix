@@ -9,6 +9,3 @@ crate-type = ["staticlib", "lib"]
 
 [dependencies]
 rand = "0.8"
-
-[profile.release]
-opt-level = 3
