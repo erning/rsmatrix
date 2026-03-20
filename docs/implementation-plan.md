@@ -106,7 +106,7 @@ pub struct ScreenBuffer {
 ```
 
 Methods:
-- `new(width, height)` — allocate grid, all cells = space/black/black
+- `new(width, height)` — allocate grid, all cells = space / `Rgb(0,0,0)` / `Rgb(0,0,0)` (true black, not named ANSI black)
 - `set_cell(col: i32, row: i32, fg, bg, ch)` — bounds-checked (silently ignore out-of-bounds, including negative row like -1 on first tick), marks cell dirty
 - `clear()` — fill all cells with space/black/black, mark dirty
 - `sync()` — mark ALL cells dirty (forces full redraw on next flush)
@@ -192,15 +192,19 @@ Stream worker threads should use a reduced stack size (64 KB) since they only pe
 
 ## 5. Color Mapping
 
-Go tcell colors map to crossterm as follows:
+The Go reference uses named ANSI palette colors (e.g., `tcell.ColorGreen` → ANSI 2). These are **remapped by the terminal's color scheme**, causing the effect to look wrong on many themes (Solarized, Dracula, Gruvbox, etc.). Common issues include the "black" background rendering as visible grey, and greens shifting to different hues.
 
-| Go tcell | ANSI Code | crossterm Color | Usage |
-|---|---|---|---|
-| `ColorBlack` | 0 | `Color::Black` | Background, erased cells |
-| `ColorGreen` | 2 | `Color::DarkGreen` | Mid-stream body (66%) |
-| `ColorLime` | 10 | `Color::Green` | Mid-stream body (34%) |
-| `ColorSilver` | 7 | `Color::Grey` | Head character (33%) |
-| `ColorWhite` | 15 | `Color::White` | Head character (67%) |
+The Rust version **must use explicit 24-bit RGB values** via `Color::Rgb { r, g, b }` to ensure consistent appearance regardless of terminal theme:
+
+| Go tcell | ANSI Code | RGB Value | crossterm Color | Usage |
+|---|---|---|---|---|
+| `ColorBlack` | 0 | `#000000` | `Color::Rgb { r: 0, g: 0, b: 0 }` | Background, erased cells |
+| `ColorGreen` | 2 | `#00AA00` | `Color::Rgb { r: 0, g: 170, b: 0 }` | Mid-stream body (66%) |
+| `ColorLime` | 10 | `#55FF55` | `Color::Rgb { r: 85, g: 255, b: 85 }` | Mid-stream body (34%) |
+| `ColorSilver` | 7 | `#AAAAAA` | `Color::Rgb { r: 170, g: 170, b: 170 }` | Head character (33%) |
+| `ColorWhite` | 15 | `#FFFFFF` | `Color::Rgb { r: 255, g: 255, b: 255 }` | Head character (67%) |
+
+This requires a terminal that supports true color (24-bit), which covers virtually all modern terminal emulators.
 
 ---
 
@@ -222,11 +226,11 @@ loop {
             if !head_done && head_pos <= screen_height {
                 new_char = random char from active charset
                 // Re-render previous head position with mid-stream color
-                mid_color = if rand(0..100) < 66 { DarkGreen } else { Green }
-                screen.set_cell(column, head_pos - 1, mid_color, Black, last_char)
+                mid_color = if rand(0..100) < 66 { Rgb(0,170,0) } else { Rgb(85,255,85) }
+                screen.set_cell(column, head_pos - 1, mid_color, Rgb(0,0,0), last_char)
                 // Render current head position with head color
-                head_color = if rand(0..100) < 33 { Grey } else { White }
-                screen.set_cell(column, head_pos, head_color, Black, new_char)
+                head_color = if rand(0..100) < 33 { Rgb(170,170,170) } else { Rgb(255,255,255) }
+                screen.set_cell(column, head_pos, head_color, Rgb(0,0,0), new_char)
                 last_char = new_char
                 head_pos += 1
             } else {
@@ -240,7 +244,7 @@ loop {
                     new_stream_tx.try_send(())
                 }
                 if tail_pos < screen_height {
-                    screen.set_cell(column, tail_pos, Black, Black, ' ')
+                    screen.set_cell(column, tail_pos, Rgb(0,0,0), Rgb(0,0,0), ' ')
                     tail_pos += 1
                 } else {
                     break  // stream terminates

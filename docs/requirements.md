@@ -183,15 +183,20 @@ When a stream terminates (tail reaches the bottom or a stop signal is received),
 
 ### 5.4 Color System
 
-All rendering uses a black background. Five foreground colors are used:
+All rendering uses a true black background. Five foreground colors are used:
 
-| Color   | Usage | Description |
-|---------|-------|-------------|
-| Black   | Erased cells, default background | Invisible (black on black) |
-| Green   | Mid-stream body characters | Standard green, used 66% of the time |
-| Lime    | Mid-stream body characters | Bright/bold green, used 34% of the time |
-| Silver  | Leading head character | Gray tone, used 33% of the time |
-| White   | Leading head character | Bright white, used 67% of the time |
+| Color   | RGB Value  | Usage | Description |
+|---------|------------|-------|-------------|
+| Black   | `#000000`  | Erased cells, default background | Invisible (black on black) |
+| Green   | `#00AA00`  | Mid-stream body characters | Standard green, used 66% of the time |
+| Lime    | `#55FF55`  | Mid-stream body characters | Bright/bold green, used 34% of the time |
+| Silver  | `#AAAAAA`  | Leading head character | Gray tone, used 33% of the time |
+| White   | `#FFFFFF`  | Leading head character | Bright white, used 67% of the time |
+
+**Important — use fixed RGB values, not named ANSI colors.**
+The Go reference implementation (`gomatrix`) uses named ANSI palette colors (e.g., ANSI 0 "Black", ANSI 2 "Green"). These named colors are **remapped by the terminal emulator's color scheme**, so the actual displayed colors vary across terminals and themes. Many popular themes (Solarized, Dracula, Gruvbox, etc.) redefine ANSI black to a visible grey, making the supposedly-invisible background cells visible and breaking the effect.
+
+To ensure a consistent Matrix aesthetic regardless of terminal theme, implementations **must** use explicit 24-bit RGB color values (true color) rather than named/indexed ANSI colors. The RGB values listed above correspond to the standard VGA palette that the original ANSI codes were designed to represent.
 
 **Probability distributions:**
 
