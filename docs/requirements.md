@@ -68,8 +68,6 @@ Character selection within the active set is uniformly random.
 |------------------|-------|---------|---------|-------------|
 | `--ascii`        | `-a`  | boolean | false   | Use ASCII/alphanumeric characters only |
 | `--kana`         | `-k`  | boolean | false   | Use Japanese half-width katakana only |
-| `--log`          | `-l`  | boolean | false   | Enable debug logging to `~/.gomatrix-log` |
-| `--profile`      | `-p`  | string  | (none)  | Write CPU profile to the given file path |
 | `--fps`          |       | integer | 25      | Target frames per second (screen refresh rate) |
 | `--help`         | `-h`  | boolean | false   | Display usage information and exit |
 
@@ -226,9 +224,11 @@ This allows approximately one additional stream for every 10 rows of terminal he
 
 ## 6. Concurrency Model
 
-The application uses concurrent, independently-executing workers communicating via channels and shared state protected by mutual exclusion.
+> **Implementation note**: The sections below describe the concurrency model from the Go reference implementation (`gomatrix`), which uses one goroutine per column and per stream. The Rust implementation (`rsmatrix`) intentionally uses a **single-threaded event loop** with a tick-based simulation engine instead. All stream and column logic runs synchronously in `Simulation::tick()`, driven by delta-time accumulators. See `docs/design-notes.md` for the rationale behind this architectural change.
 
-### 6.1 Worker Types
+The Go reference uses concurrent, independently-executing workers communicating via channels and shared state protected by mutual exclusion.
+
+### 6.1 Worker Types (Go reference)
 
 | Worker              | Count                      | Purpose |
 |---------------------|----------------------------|---------|
@@ -239,7 +239,7 @@ The application uses concurrent, independently-executing workers communicating v
 | Screen Flusher      | 1                          | Flushes the screen buffer to the terminal at FPS rate |
 | Event Poller        | 1                          | Polls for terminal events and forwards them to the main loop |
 
-### 6.2 Communication Channels
+### 6.2 Communication Channels (Go reference)
 
 | Channel         | Type             | Producer(s)            | Consumer       | Buffered | Purpose |
 |-----------------|------------------|------------------------|----------------|----------|---------|
@@ -250,7 +250,7 @@ The application uses concurrent, independently-executing workers communicating v
 | eventChan       | terminal event   | Event Poller           | Main           | No       | Forward user input / resize events |
 | sigChan         | OS signal        | Operating system       | Main           | No       | Forward interrupt/kill signals |
 
-### 6.3 Shared State
+### 6.3 Shared State (Go reference)
 
 - **Screen buffer**: All stream workers write to the screen buffer concurrently via `SetCell(column, row, style, character)`. The screen library handles concurrent cell writes.
 - **Stream set**: Each column worker maintains a set of active streams, protected by a mutex. Locked when adding a new stream (in the column worker) or removing a terminated stream (in the stream worker).
@@ -345,37 +345,19 @@ Note: Individual stream and column workers are not explicitly stopped during shu
 
 ## 10. Logging and Profiling
 
-### 10.1 Debug Logging
+> **Not implemented**: The `--log` and `--profile` flags from the Go reference are not implemented in the Rust version. The single-threaded architecture is simple enough to debug with standard tools (e.g., `RUST_LOG`, `tracing`, or a debugger) without a built-in logging facility. This section is retained for reference to the Go original.
+
+### 10.1 Debug Logging (Go reference)
 
 - **Activation**: `--log` / `-l` flag.
 - **Log file**: `~/.gomatrix-log` (resolved via `$HOME` environment variable).
 - **File mode**: Opened for read/write, created if missing, appended to if existing. Permission mode `0666`.
 - **When disabled**: Log output is directed to the system null device (`/dev/null`).
 
-**Log messages:**
-
-| Event | Message |
-|-------|---------|
-| Startup | `"Starting gomatrix. This logfile is for development/debug purposes."` |
-| Startup separator | `"-------------"` (logged before the startup message) |
-| Terminal resize | `"New width: <width>"` |
-| Resize with no width change | `"Got resize over channel, but diffWidth = 0"` |
-| New columns created | `"Starting <count> new SD's"` |
-| Columns removed | `"Closing <count> SD's"` |
-| Stream stopped | `"Stream on SD <column> was stopped."` |
-| Column worker stopped | `"StreamDisplay on column <column> stopped."` |
-| Terminal event received | Full debug dump of the event object |
-| OS signal received | Full debug dump of the signal object |
-| Terminal library error | `"Quitting because of tcell error: <error>"` (fatal, exits immediately) |
-| Shutdown | `"stopping gomatrix"` |
-
-### 10.2 CPU Profiling
+### 10.2 CPU Profiling (Go reference)
 
 - **Activation**: `--profile <filepath>` / `-p <filepath>`.
 - **Behavior**: Creates the specified file at startup. Begins CPU profiling immediately. Stops profiling during the shutdown sequence.
-- **Errors**:
-  - If the profile file cannot be created: `"Error opening profiling file: <error>"` — exit code 1.
-  - If profiling fails to start: `"Error start profiling : <error>"` (note: two spaces before colon) — exit code 1.
 
 ---
 
@@ -414,42 +396,12 @@ Thank you for connecting with Morpheus' Matrix API v4.2. Have a nice day!
 | Unknown flag | `Use --help to view all available options.` | 0 (returns) |
 | Unknown positional argument | `Unknown argument '<arg>'.` | 0 (returns) |
 | FPS out of range (1-60) | `Error: option --fps not within range 1-60` | 1 |
-| Profile file creation failure | `Error opening profiling file: <error>` | 1 |
-| Profile start failure | `Error start profiling : <error>` | 1 |
-| Log file open failure | `Could not open logfile. <error>` | 1 |
-| Terminal screen creation failure | `Could not start tcell for gomatrix. View ~/.gomatrix-log for error messages.` | 1 |
-| Terminal screen init failure | `Could not start tcell for gomatrix. View ~/.gomatrix-log for error messages.` | 1 |
 
 ---
 
 ## 12. Docker Support
 
-The application supports containerized deployment via a multi-stage build.
-
-### 12.1 Build Stage
-
-- **Base image**: A minimal Linux distribution with the build toolchain pre-installed.
-- **Build configuration**:
-  - Target OS: Linux
-  - Target architecture: amd64
-  - CGo: Disabled (pure static binary)
-  - Binary optimizations: Strip debug symbols and symbol table to minimize size.
-
-### 12.2 Runtime Stage
-
-- **Base image**: `scratch` (empty image, containing only the compiled binary).
-- **Entrypoint**: The compiled binary.
-- **Run command**: Must be run with an interactive TTY (`-ti` flags) since the application requires terminal access.
-
-### 12.3 Usage
-
-```
-# Build locally
-docker build -t gomatrix .
-
-# Run
-docker run -ti gomatrix
-```
+> **Not implemented**: Docker support is not included in the Rust version. The Go reference's Dockerfile produced a static binary; the Rust version can be built with `cargo build --release` and distributed as a standalone binary. This section is retained for reference.
 
 ---
 
