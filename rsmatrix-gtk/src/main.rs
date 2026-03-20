@@ -68,10 +68,26 @@ fn build_ui(app: &gtk4::Application, start_fullscreen: bool) {
         .title("Matrix")
         .default_width(800)
         .default_height(600)
-        .decorated(false)
         .build();
 
+    // Minimal dark headerbar with fullscreen button and close
+    let header = gtk4::HeaderBar::new();
+    header.set_decoration_layout(Some(":close"));
+    header.set_show_title_buttons(true);
+
+    let fullscreen_btn = gtk4::Button::with_label("⛶");
+    fullscreen_btn.set_tooltip_text(Some("Fullscreen (f)"));
+    let win_fs = window.clone();
+    fullscreen_btn.connect_clicked(move |_| {
+        win_fs.set_decorated(false);
+        win_fs.fullscreen();
+    });
+    header.pack_start(&fullscreen_btn);
+
+    window.set_titlebar(Some(&header));
+
     if start_fullscreen {
+        window.set_decorated(false);
         window.fullscreen();
     }
 
@@ -82,7 +98,15 @@ fn build_ui(app: &gtk4::Application, start_fullscreen: bool) {
 
     // Apply black background via CSS
     let css_provider = gtk4::CssProvider::new();
-    css_provider.load_from_string("window, drawingarea { background-color: black; }");
+    // Force dark style for the entire app
+    window.settings().set_gtk_application_prefer_dark_theme(true);
+
+    css_provider.load_from_string(
+        "window, drawingarea { background-color: black; } \
+         headerbar.titlebar { background: black; border-bottom: 1px solid #333; color: #888; } \
+         headerbar.titlebar button { color: #888; } \
+         headerbar.titlebar windowcontrols button { color: #888; }",
+    );
     gtk4::style_context_add_provider_for_display(
         &gdk::Display::default().expect("no display"),
         &css_provider,
@@ -164,14 +188,17 @@ fn build_ui(app: &gtk4::Application, start_fullscreen: bool) {
             }
             v if v == gdk::Key::Escape => {
                 if win_ref.is_fullscreen() {
+                    win_ref.set_decorated(true);
                     win_ref.unfullscreen();
                 }
                 glib::Propagation::Stop
             }
             v if v == gdk::Key::f || v == gdk::Key::F11 => {
                 if win_ref.is_fullscreen() {
+                    win_ref.set_decorated(true);
                     win_ref.unfullscreen();
                 } else {
+                    win_ref.set_decorated(false);
                     win_ref.fullscreen();
                 }
                 glib::Propagation::Stop
