@@ -9,8 +9,7 @@ name = "rsmatrix"
 path = "src/main.rs"
 
 [dependencies]
+rsmatrix-core = { workspace = true }
 clap = { workspace = true }
 crossterm = { workspace = true }
-crossbeam-channel = { workspace = true }
-rand = { workspace = true }
 signal-hook = { workspace = true }

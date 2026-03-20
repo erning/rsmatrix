@@ -1,13 +1,8 @@
 use crossterm::style::Color;
 use std::io::{self, Write};
-use std::sync::{Arc, Mutex};
 
-/// RGB color constants — true color, not ANSI named colors.
+/// RGB color constant for background.
 pub const BLACK: Color = Color::Rgb { r: 0, g: 0, b: 0 };
-pub const GREEN: Color = Color::Rgb { r: 0, g: 0xAA, b: 0 };
-pub const LIME: Color = Color::Rgb { r: 0x55, g: 0xFF, b: 0x55 };
-pub const SILVER: Color = Color::Rgb { r: 0xAA, g: 0xAA, b: 0xAA };
-pub const WHITE: Color = Color::Rgb { r: 0xFF, g: 0xFF, b: 0xFF };
 
 #[derive(Clone, Copy)]
 struct Cell {
@@ -115,5 +110,3 @@ impl ScreenBuffer {
         Ok(())
     }
 }
-
-pub type SharedScreen = Arc<Mutex<ScreenBuffer>>;

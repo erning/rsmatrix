@@ -1,5 +1,5 @@
-#ifndef rsmatrix_core_Bridging_h
-#define rsmatrix_core_Bridging_h
+#ifndef rsmatrix_ffi_Bridging_h
+#define rsmatrix_ffi_Bridging_h
 
 #include <stdint.h>
 

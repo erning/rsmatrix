@@ -4,8 +4,5 @@ version = "0.1.0"
 edition = "2021"
 description = "Matrix digital rain simulation core library"
 
-[lib]
-crate-type = ["staticlib", "lib"]
-
 [dependencies]
 rand = { workspace = true }

@@ -14,15 +14,15 @@ targets:
     settings:
       base:
         WRAPPER_EXTENSION: saver
-        SWIFT_OBJC_BRIDGING_HEADER: MatrixSaver/rsmatrix-core-Bridging.h
-        LIBRARY_SEARCH_PATHS: "$(PROJECT_DIR)/../rsmatrix-core/target/release"
-        OTHER_LDFLAGS: ["-lrsmatrix_core"]
+        SWIFT_OBJC_BRIDGING_HEADER: MatrixSaver/rsmatrix-ffi-Bridging.h
+        LIBRARY_SEARCH_PATHS: "$(PROJECT_DIR)/../target/release"
+        OTHER_LDFLAGS: ["-lrsmatrix_ffi"]
         INFOPLIST_FILE: MatrixSaver/Info.plist
         PRODUCT_NAME: MatrixSaver
         PRODUCT_BUNDLE_IDENTIFIER: com.rsmatrix.MatrixSaver
     preBuildScripts:
       - name: Build Rust Library
         script: |
-          cd "$PROJECT_DIR/../rsmatrix-core"
-          cargo build --release
+          cd "$PROJECT_DIR/.."
+          cargo build --release -p rsmatrix-ffi
         basedOnDependencyAnalysis: false

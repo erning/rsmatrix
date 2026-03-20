@@ -1,26 +1,21 @@
-mod charset;
-mod column;
 mod screen;
-mod stream;
-mod types;
 
 use clap::error::ErrorKind;
 use clap::Parser;
-use crossbeam_channel::{bounded, select};
 use crossterm::{
     cursor, event,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
+use rsmatrix_core::charset;
+use rsmatrix_core::simulation::Simulation;
 use std::io;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
-use std::time::Duration;
-use std::{process, thread};
+use std::process;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
-use charset::{CHARSET_COMBINED, CHARSET_KANA};
 use screen::ScreenBuffer;
-use types::Sizes;
 
 #[derive(Parser)]
 #[command(name = "rsmatrix", about = "Matrix digital rain terminal effect")]
@@ -71,9 +66,9 @@ fn main() {
     if cli.ascii {
         charset::set_charset(charset::CHARSET_ASCII);
     } else if cli.kana {
-        charset::set_charset(CHARSET_KANA);
+        charset::set_charset(charset::CHARSET_KANA);
     } else {
-        charset::set_charset(CHARSET_COMBINED);
+        charset::set_charset(charset::CHARSET_COMBINED);
     }
 
     // Initialize terminal
@@ -88,163 +83,126 @@ fn main() {
 
     let (width, height) = terminal::size().expect("failed to get terminal size");
 
-    // Shared state
-    let shared_sizes = Arc::new(RwLock::new(Sizes::new(width, height)));
-    let screen_buf = Arc::new(std::sync::Mutex::new(ScreenBuffer::new(width, height)));
+    // Create simulation and screen buffer
+    let mut sim = Simulation::new(width as u32, height as u32);
+    let mut screen_buf = ScreenBuffer::new(width, height);
     let initial_fps = cli.fps;
-    let fps = Arc::new(AtomicU64::new(cli.fps as u64));
+    let mut fps = cli.fps;
 
     let fps_micros = 1_000_000u64 / cli.fps as u64;
     println!("fps sleep time: {}", format_duration_micros(fps_micros));
 
-    // Channels
-    let (sizes_tx, sizes_rx) = bounded::<()>(0);
-    let (cm_stop_tx, cm_stop_rx) = bounded::<bool>(1);
-    let (event_tx, event_rx) = bounded::<event::Event>(0);
-
     // Signal handler for external SIGINT
-    let (sig_tx, sig_rx) = bounded::<()>(1);
-    {
-        let sig_flag = Arc::new(AtomicBool::new(false));
-        let _ = signal_hook::flag::register(signal_hook::consts::SIGINT, sig_flag.clone());
-        let tx = sig_tx;
-        thread::spawn(move || {
-            loop {
-                if sig_flag.load(Ordering::Relaxed) {
-                    let _ = tx.send(());
-                    return;
-                }
-                thread::sleep(Duration::from_millis(50));
-            }
-        });
-    }
+    let sig_flag = Arc::new(AtomicBool::new(false));
+    let _ = signal_hook::flag::register(signal_hook::consts::SIGINT, sig_flag.clone());
 
-    // Column manager thread
-    {
-        let sz = shared_sizes.clone();
-        let scr = screen_buf.clone();
-        thread::Builder::new()
-            .name("col-manager".into())
-            .spawn(move || {
-                column::run_column_manager(sizes_rx, sz, scr, cm_stop_rx);
-            })
-            .expect("failed to spawn column manager");
-    }
+    let mut last_tick = Instant::now();
 
-    // Send initial sizes
-    let _ = sizes_tx.send(());
+    // Main loop
+    loop {
+        let frame_duration = Duration::from_micros(1_000_000 / fps as u64);
 
-    // Screen flusher thread
-    {
-        let scr = screen_buf.clone();
-        let fps_ref = fps.clone();
-        thread::Builder::new()
-            .name("flusher".into())
-            .spawn(move || {
-                let mut stdout = io::stdout();
-                loop {
-                    let cur_fps = fps_ref.load(Ordering::Relaxed);
-                    if cur_fps == 0 {
-                        break;
-                    }
-                    let sleep_time = Duration::from_micros(1_000_000 / cur_fps);
-                    thread::sleep(sleep_time);
-                    let mut buf = scr.lock().unwrap();
-                    let _ = buf.flush(&mut stdout);
-                }
-            })
-            .expect("failed to spawn flusher");
-    }
-
-    // Event poller thread
-    thread::Builder::new()
-        .name("event-poller".into())
-        .spawn(move || loop {
+        // Poll for events or timeout at frame rate
+        if event::poll(frame_duration).unwrap_or(false) {
             if let Ok(ev) = event::read() {
-                if event_tx.send(ev).is_err() {
-                    return;
-                }
-            }
-        })
-        .expect("failed to spawn event poller");
-
-    // Main event loop
-    'events: loop {
-        select! {
-            recv(event_rx) -> ev => {
-                if let Ok(ev) = ev {
-                    match ev {
-                        event::Event::Key(key_event) => {
-                            if key_event.kind != event::KeyEventKind::Press {
-                                continue;
-                            }
-                            match key_event.code {
-                                event::KeyCode::Char('c') if key_event.modifiers.contains(event::KeyModifiers::CONTROL) => {
-                                    break 'events;
-                                }
-                                event::KeyCode::Char('z') if key_event.modifiers.contains(event::KeyModifiers::CONTROL) => {
-                                    break 'events;
-                                }
-                                event::KeyCode::Char('l') if key_event.modifiers.contains(event::KeyModifiers::CONTROL) => {
-                                    let mut buf = screen_buf.lock().unwrap();
-                                    buf.request_full_redraw();
-                                }
-                                event::KeyCode::Char('q') => break 'events,
-                                event::KeyCode::Char('c') => {
-                                    let mut buf = screen_buf.lock().unwrap();
-                                    buf.clear();
-                                }
-                                event::KeyCode::Char('k') => {
-                                    charset::set_charset(CHARSET_KANA);
-                                }
-                                event::KeyCode::Char('b') => {
-                                    charset::set_charset(CHARSET_COMBINED);
-                                }
-                                event::KeyCode::Char('+') => {
-                                    let cur = fps.load(Ordering::Relaxed);
-                                    if cur < 60 {
-                                        fps.store(cur + 1, Ordering::Relaxed);
-                                    }
-                                }
-                                event::KeyCode::Char('-') => {
-                                    let cur = fps.load(Ordering::Relaxed);
-                                    if cur > 1 {
-                                        fps.store(cur - 1, Ordering::Relaxed);
-                                    }
-                                }
-                                event::KeyCode::Char('=') => {
-                                    fps.store(initial_fps as u64, Ordering::Relaxed);
-                                }
-                                _ => {}
-                            }
+                match ev {
+                    event::Event::Key(key_event) => {
+                        if key_event.kind != event::KeyEventKind::Press {
+                            continue;
                         }
-                        event::Event::Resize(w, h) => {
+                        match key_event.code {
+                            event::KeyCode::Char('c')
+                                if key_event
+                                    .modifiers
+                                    .contains(event::KeyModifiers::CONTROL) =>
                             {
-                                let mut s = shared_sizes.write().unwrap();
-                                *s = Sizes::new(w, h);
+                                break;
                             }
+                            event::KeyCode::Char('z')
+                                if key_event
+                                    .modifiers
+                                    .contains(event::KeyModifiers::CONTROL) =>
                             {
-                                let mut buf = screen_buf.lock().unwrap();
-                                buf.resize(w, h);
+                                break;
                             }
-                            let _ = sizes_tx.send(());
+                            event::KeyCode::Char('l')
+                                if key_event
+                                    .modifiers
+                                    .contains(event::KeyModifiers::CONTROL) =>
+                            {
+                                screen_buf.request_full_redraw();
+                            }
+                            event::KeyCode::Char('q') => break,
+                            event::KeyCode::Char('c') => {
+                                screen_buf.clear();
+                            }
+                            event::KeyCode::Char('k') => {
+                                charset::set_charset(charset::CHARSET_KANA);
+                            }
+                            event::KeyCode::Char('b') => {
+                                charset::set_charset(charset::CHARSET_COMBINED);
+                            }
+                            event::KeyCode::Char('+') => {
+                                if fps < 60 {
+                                    fps += 1;
+                                }
+                            }
+                            event::KeyCode::Char('-') => {
+                                if fps > 1 {
+                                    fps -= 1;
+                                }
+                            }
+                            event::KeyCode::Char('=') => {
+                                fps = initial_fps;
+                            }
+                            _ => {}
                         }
-                        _ => {}
                     }
+                    event::Event::Resize(w, h) => {
+                        sim.resize(w as u32, h as u32);
+                        screen_buf.resize(w, h);
+                    }
+                    _ => {}
                 }
-            }
-            recv(sig_rx) -> _ => {
-                break 'events;
             }
         }
+
+        // Check SIGINT
+        if sig_flag.load(Ordering::Relaxed) {
+            break;
+        }
+
+        // Compute delta and tick simulation
+        let now = Instant::now();
+        let delta = now.duration_since(last_tick);
+        last_tick = now;
+        let delta_ms = delta.as_millis() as u32;
+
+        sim.tick(delta_ms);
+
+        // Map simulation grid to screen buffer
+        let grid = sim.grid();
+        let sim_w = sim.width() as u16;
+        let sim_h = sim.height() as u16;
+        for row in 0..sim_h {
+            for col in 0..sim_w {
+                let idx = (row as usize) * (sim_w as usize) + (col as usize);
+                let cell = &grid[idx];
+                let ch = char::from_u32(cell.codepoint).unwrap_or(' ');
+                let fg = crossterm::style::Color::Rgb {
+                    r: cell.r,
+                    g: cell.g,
+                    b: cell.b,
+                };
+                screen_buf.set_cell(col, row, fg, screen::BLACK, ch);
+            }
+        }
+
+        // Flush to terminal
+        let _ = screen_buf.flush(&mut stdout);
     }
 
-    // Shutdown
-    fps.store(0, Ordering::Relaxed);
-    let _ = cm_stop_tx.send(true);
-
     // Restore terminal
-    let mut stdout = io::stdout();
     let _ = stdout.execute(cursor::Show);
     let _ = stdout.execute(LeaveAlternateScreen);
     let _ = terminal::disable_raw_mode();

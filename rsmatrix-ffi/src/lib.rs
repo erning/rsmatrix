@@ -1,4 +1,4 @@
-use crate::simulation::{Cell, Simulation};
+use rsmatrix_core::simulation::{Cell, Simulation};
 
 #[no_mangle]
 pub extern "C" fn rsmatrix_create(width: u32, height: u32) -> *mut Simulation {
@@ -56,5 +56,5 @@ pub unsafe extern "C" fn rsmatrix_grid_height(sim: *const Simulation) -> u32 {
 
 #[no_mangle]
 pub extern "C" fn rsmatrix_set_charset(mode: u32) {
-    crate::charset::set_charset(mode as usize);
+    rsmatrix_core::charset::set_charset(mode as usize);
 }
