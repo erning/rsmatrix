@@ -74,8 +74,7 @@ Character selection within the active set is uniformly random.
 ### 3.2 Validation
 
 - **`--fps`**: Must be in the range 1-60 inclusive. If outside this range, print the error message `Error: option --fps not within range 1-60` and exit with code 1.
-- **Unknown flags**: Print `Use --help to view all available options.` and exit.
-- **Positional arguments**: Not accepted. If any positional argument is provided, print `Unknown argument '<arg>'.` (where `<arg>` is the first argument) and exit.
+- **Unknown flags / positional arguments**: Handled by clap's default error formatting (displays the error, usage hint, and suggestion for the closest matching flag). Exits with code 2.
 
 ---
 
@@ -393,8 +392,7 @@ Thank you for connecting with Morpheus' Matrix API v4.2. Have a nice day!
 
 | Condition | Output | Exit Code |
 |-----------|--------|-----------|
-| Unknown flag | `Use --help to view all available options.` | 0 (returns) |
-| Unknown positional argument | `Unknown argument '<arg>'.` | 0 (returns) |
+| Unknown flag / positional argument | clap default error (error message, usage hint, closest-match suggestion) | 2 |
 | FPS out of range (1-60) | `Error: option --fps not within range 1-60` | 1 |
 
 ---

@@ -21,10 +21,11 @@ struct TerminalGuard;
 
 impl TerminalGuard {
     fn init() -> io::Result<Self> {
+        let guard = Self;
         terminal::enable_raw_mode()?;
         io::stdout().execute(EnterAlternateScreen)?;
         io::stdout().execute(cursor::Hide)?;
-        Ok(Self)
+        Ok(guard)
     }
 }
 
