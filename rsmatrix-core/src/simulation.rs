@@ -215,7 +215,7 @@ impl Simulation {
         let mut rng = rand::rng();
         for column in &mut self.columns {
             column.streams.clear();
-            let delay = rng.random_range(500..9000);
+            let delay = rng.random_range(1001..9000);
             column.spawn_state = SpawnState::Delaying {
                 remaining_ms: delay,
             };
