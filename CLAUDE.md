@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-rsmatrix is a Rust reimplementation of cmatrix — the classic Matrix terminal screensaver. It uses a three-tier crate architecture with a platform-agnostic simulation core, a terminal CLI frontend, and a C FFI layer for native screensaver integrations (macOS ScreenSaver framework, planned Linux/Windows).
+rsmatrix is a Rust reimplementation of cmatrix — the classic Matrix terminal screensaver. It uses a three-tier crate architecture with a platform-agnostic simulation core, a terminal CLI frontend, and a C FFI layer for native macOS integrations (standalone GUI app and ScreenSaver framework).
 
 ## Build Commands
 
@@ -25,8 +25,14 @@ cargo build -p rsmatrix-core
 # Build macOS screensaver bundle (requires macOS + swiftc)
 make saver
 
+# Build macOS standalone GUI app
+make app
+
+# Run macOS GUI app
+make run-app
+
 # Install macOS screensaver to ~/Library/Screen Savers/
-make install
+make install-saver
 
 # Clean all build artifacts
 make clean
@@ -45,16 +51,14 @@ rsmatrix-cli     — Terminal frontend. Uses crossterm for rendering, clap for C
 
 rsmatrix-ffi     — C FFI wrapper around rsmatrix-core. Exposes 9 extern "C" functions
                    (create, destroy, tick, resize, clear, get_grid, grid_width,
-                   grid_height, set_charset). Consumed by the macOS Swift screensaver
+                   grid_height, set_charset). Consumed by the macOS Swift app and screensaver
                    via bridging header.
 
-screensavers/
-  macos/         — Swift ScreenSaverView (.saver bundle, not a Cargo crate).
-                   Uses CTFontDrawGlyphs for batch glyph rendering with automatic
-                   font fallback for katakana characters. Configurable charset and FPS
-                   via ScreenSaver Options panel.
-  linux/         — Stub crate for future XScreenSaver integration.
-  windows/       — Stub crate for future .scr integration.
+macos/                — All macOS native code (Swift/AppKit, not Cargo crates).
+  MatrixRenderer.swift  — Shared CoreText renderer using CTFontDrawGlyphs with font fallback.
+  rsmatrix-ffi-Bridging.h — Shared C bridging header for FFI functions.
+  saver/                — ScreenSaverView (.saver bundle). Configurable charset/FPS via Options panel.
+  app/                  — Standalone GUI app (.app bundle). NSWindow + CVDisplayLink, fullscreen-capable.
 ```
 
 **Data flow**: External frontends create a `Simulation`, call `tick(delta_ms)` each frame, then read the flat `grid: Vec<Cell>` for rendering. The simulation is pure data — no threads, no I/O.

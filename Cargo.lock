@@ -461,20 +461,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rsmatrix-screensaver-linux"
-version = "1.0.0"
-dependencies = [
- "rsmatrix-core",
-]
-
-[[package]]
-name = "rsmatrix-screensaver-windows"
-version = "1.0.0"
-dependencies = [
- "rsmatrix-core",
-]
-
-[[package]]
 name = "rustc_version"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
