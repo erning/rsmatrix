@@ -5,6 +5,13 @@ members = [
 ]
 resolver = "2"
 
+[workspace.dependencies]
+rand = "0.8"
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.28"
+crossbeam-channel = "0.5"
+signal-hook = "0.3"
+
 [profile.release]
 opt-level = 3
 strip = true

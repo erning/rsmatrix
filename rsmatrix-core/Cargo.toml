@@ -8,4 +8,4 @@ description = "Matrix digital rain simulation core library"
 crate-type = ["staticlib", "lib"]
 
 [dependencies]
-rand = "0.8"
+rand = { workspace = true }
