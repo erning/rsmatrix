@@ -43,11 +43,16 @@ rsmatrix-core    — Platform-agnostic simulation engine. Only depends on `rand`
 rsmatrix-cli     — Terminal frontend. Uses crossterm for rendering, clap for CLI args,
                    signal-hook for SIGINT. Contains ScreenBuffer with dirty-cell tracking.
 
-rsmatrix-ffi     — C FFI wrapper around rsmatrix-core. Exposes 8 extern "C" functions.
-                   Consumed by the macOS Swift screensaver via bridging header.
+rsmatrix-ffi     — C FFI wrapper around rsmatrix-core. Exposes 9 extern "C" functions
+                   (create, destroy, tick, resize, clear, get_grid, grid_width,
+                   grid_height, set_charset). Consumed by the macOS Swift screensaver
+                   via bridging header.
 
 screensavers/
-  macos/         — Swift ScreenSaverView driven by CADisplayLink (not a Cargo crate).
+  macos/         — Swift ScreenSaverView (.saver bundle, not a Cargo crate).
+                   Uses CTFontDrawGlyphs for batch glyph rendering with automatic
+                   font fallback for katakana characters. Configurable charset and FPS
+                   via ScreenSaver Options panel.
   linux/         — Stub crate for future XScreenSaver integration.
   windows/       — Stub crate for future .scr integration.
 ```

@@ -55,7 +55,7 @@ make saver
 make install
 ```
 
-Then open **System Settings > Screen Saver** to select MatrixSaver.
+Then open **System Settings > Screen Saver** to select MatrixSaver. Click **Options…** to configure character set and frame rate.
 
 ## Project Structure
 

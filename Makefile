@@ -1,5 +1,6 @@
 RUST_LIB = target/release/librsmatrix_ffi.a
-SWIFT_FILES = screensavers/macos/MatrixSaver/MatrixSaverView.swift screensavers/macos/MatrixSaver/MatrixRenderer.swift
+SWIFT_FILES = screensavers/macos/MatrixSaver/MatrixSaverView.swift \
+              screensavers/macos/MatrixSaver/MatrixRenderer.swift
 BRIDGING_HEADER = screensavers/macos/MatrixSaver/rsmatrix-ffi-Bridging.h
 BUILD_DIR = build
 SAVER_DIR = $(BUILD_DIR)/MatrixSaver.saver
@@ -24,6 +25,7 @@ saver: $(RUST_LIB) $(SWIFT_FILES) $(BRIDGING_HEADER)
 		-lrsmatrix_ffi \
 		-framework ScreenSaver \
 		-framework AppKit \
+		-framework CoreText \
 		-Xlinker -install_name -Xlinker @rpath/MatrixSaver \
 		$(SWIFT_FILES) \
 		-o $(SAVER_DIR)/Contents/MacOS/MatrixSaver
