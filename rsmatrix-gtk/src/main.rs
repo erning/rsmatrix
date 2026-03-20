@@ -26,6 +26,10 @@ struct Cli {
     /// Use Japanese half-width katakana only
     #[arg(short = 'k', long = "kana")]
     kana: bool,
+
+    /// Start in fullscreen mode
+    #[arg(short = 'f', long = "fullscreen")]
+    fullscreen: bool,
 }
 
 struct AppState {
@@ -48,21 +52,28 @@ fn main() {
         charset::set_charset(charset::CHARSET_COMBINED);
     }
 
+    let start_fullscreen = cli.fullscreen;
+
     let app = gtk4::Application::builder()
         .application_id("com.rsmatrix.gtk")
         .build();
 
-    app.connect_activate(build_ui);
-    app.run();
+    app.connect_activate(move |app| build_ui(app, start_fullscreen));
+    app.run_with_args::<&str>(&[]);
 }
 
-fn build_ui(app: &gtk4::Application) {
+fn build_ui(app: &gtk4::Application, start_fullscreen: bool) {
     let window = gtk4::ApplicationWindow::builder()
         .application(app)
         .title("Matrix")
         .default_width(800)
         .default_height(600)
+        .decorated(false)
         .build();
+
+    if start_fullscreen {
+        window.fullscreen();
+    }
 
     let drawing_area = gtk4::DrawingArea::new();
     drawing_area.set_hexpand(true);
@@ -151,7 +162,13 @@ fn build_ui(app: &gtk4::Application) {
                 charset::set_charset(charset::CHARSET_ASCII);
                 glib::Propagation::Stop
             }
-            v if v == gdk::Key::F11 => {
+            v if v == gdk::Key::Escape => {
+                if win_ref.is_fullscreen() {
+                    win_ref.unfullscreen();
+                }
+                glib::Propagation::Stop
+            }
+            v if v == gdk::Key::f || v == gdk::Key::F11 => {
                 if win_ref.is_fullscreen() {
                     win_ref.unfullscreen();
                 } else {
