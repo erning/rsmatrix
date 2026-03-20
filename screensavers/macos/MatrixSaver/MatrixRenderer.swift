@@ -102,6 +102,7 @@ class MatrixRenderer {
         }
 
         // Collect glyphs into (font, color) buckets
+        let totalHeight = CGFloat(height) * cellSize.height
         for row in 0 ..< height {
             for col in 0 ..< width {
                 let idx = Int(row) * Int(width) + Int(col)
@@ -130,7 +131,7 @@ class MatrixRenderer {
                 }
 
                 let x = CGFloat(col) * cellSize.width
-                let y = CGFloat(row) * cellSize.height + info.ascent
+                let y = totalHeight - CGFloat(row + 1) * cellSize.height + info.ascent
 
                 drawBatches[key]![colorIdx].append(info.glyph)
                 pointBatches[key]![colorIdx].append(CGPoint(x: x, y: y))
@@ -146,6 +147,8 @@ class MatrixRenderer {
         ]
 
         context.saveGState()
+        context.translateBy(x: 0, y: totalHeight)
+        context.scaleBy(x: 1, y: -1)
         context.setTextDrawingMode(.fill)
 
         for (key, fontInfo) in knownFonts {
