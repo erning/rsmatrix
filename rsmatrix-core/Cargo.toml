@@ -1,0 +1,14 @@
+[package]
+name = "rsmatrix-core"
+version = "0.1.0"
+edition = "2021"
+description = "Matrix digital rain simulation core library"
+
+[lib]
+crate-type = ["staticlib", "lib"]
+
+[dependencies]
+rand = "0.8"
+
+[profile.release]
+opt-level = 3

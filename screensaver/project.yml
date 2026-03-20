@@ -1,0 +1,28 @@
+name: MatrixSaver
+options:
+  bundleIdPrefix: com.rsmatrix
+  deploymentTarget:
+    macOS: "12.0"
+targets:
+  MatrixSaver:
+    type: bundle
+    platform: macOS
+    sources:
+      - path: MatrixSaver
+        excludes:
+          - "*.h"
+    settings:
+      base:
+        WRAPPER_EXTENSION: saver
+        SWIFT_OBJC_BRIDGING_HEADER: MatrixSaver/rsmatrix-core-Bridging.h
+        LIBRARY_SEARCH_PATHS: "$(PROJECT_DIR)/../rsmatrix-core/target/release"
+        OTHER_LDFLAGS: ["-lrsmatrix_core"]
+        INFOPLIST_FILE: MatrixSaver/Info.plist
+        PRODUCT_NAME: MatrixSaver
+        PRODUCT_BUNDLE_IDENTIFIER: com.rsmatrix.MatrixSaver
+    preBuildScripts:
+      - name: Build Rust Library
+        script: |
+          cd "$PROJECT_DIR/../rsmatrix-core"
+          cargo build --release
+        basedOnDependencyAnalysis: false
