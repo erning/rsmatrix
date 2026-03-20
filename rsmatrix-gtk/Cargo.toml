@@ -1,0 +1,15 @@
+[package]
+name = "rsmatrix-gtk"
+version = "1.0.0"
+edition = "2021"
+description = "Matrix digital rain GTK4 GUI app"
+
+[[bin]]
+name = "rsmatrix-gtk"
+path = "src/main.rs"
+
+[dependencies]
+rsmatrix-core = { workspace = true }
+gtk4 = { version = "0.9", features = ["v4_12"] }
+pangocairo = "0.20"
+clap = { workspace = true }

@@ -11,6 +11,7 @@ Matrix digital rain in your terminal, written in Rust.
 - True 24-bit RGB color (consistent across terminal themes)
 - Dynamic terminal resize handling
 - macOS screensaver (via FFI + Swift)
+- Linux GTK4 GUI app with fullscreen and font zoom
 - Cross-platform screensaver support planned (Linux, Windows)
 
 ## Installation
@@ -46,6 +47,35 @@ rsmatrix
 | `=` | Reset FPS to default |
 | `Ctrl+L` | Full redraw |
 
+## Linux GTK4 GUI App
+
+Requires GTK4 development libraries:
+
+```sh
+# Fedora
+sudo dnf install gtk4-devel
+
+# Debian/Ubuntu
+sudo apt install libgtk-4-dev
+```
+
+Run:
+
+```sh
+cargo run -p rsmatrix-gtk
+```
+
+| Key | Action |
+|-----|--------|
+| `q` | Quit |
+| `c` | Clear screen |
+| `a` | ASCII only |
+| `k` | Katakana only |
+| `b` | Combined (kana + ASCII) |
+| `F11` | Toggle fullscreen |
+| `Ctrl+=`/`Ctrl+-` | Font zoom in/out |
+| `Ctrl+0` | Reset font size |
+
 ## macOS Screensaver
 
 Build and install the screensaver bundle:
@@ -64,7 +94,8 @@ Then open **System Settings > Screen Saver** to select MatrixSaver. Click **Opti
 | `rsmatrix-core` | Simulation engine (charset, column/stream logic) |
 | `rsmatrix-cli` | Terminal UI |
 | `rsmatrix-ffi` | C FFI layer for Swift integration |
-| `screensavers/` | Platform-specific screensavers (macOS, Linux, Windows) |
+| `rsmatrix-gtk` | Linux GTK4 GUI app (Pango + Cairo rendering) |
+| `macos/` | macOS native code (screensaver + standalone app) |
 
 ## Acknowledgments
 

@@ -3,6 +3,7 @@ members = [
     "rsmatrix-core",
     "rsmatrix-ffi",
     "rsmatrix-cli",
+    "rsmatrix-gtk",
 ]
 resolver = "2"
 default-members = ["rsmatrix-cli"]

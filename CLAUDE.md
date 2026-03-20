@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-rsmatrix is a Rust reimplementation of cmatrix — the classic Matrix terminal screensaver. It uses a three-tier crate architecture with a platform-agnostic simulation core, a terminal CLI frontend, and a C FFI layer for native macOS integrations (standalone GUI app and ScreenSaver framework).
+rsmatrix is a Rust reimplementation of cmatrix — the classic Matrix terminal screensaver. It uses a platform-agnostic simulation core, a terminal CLI frontend, a C FFI layer for native macOS integrations (standalone GUI app and ScreenSaver framework), and a GTK4 GUI app for Linux.
 
 ## Build Commands
 
@@ -21,6 +21,10 @@ cargo build --release -p rsmatrix-ffi
 
 # Build a specific crate
 cargo build -p rsmatrix-core
+
+# Build and run the Linux GTK4 GUI app (requires gtk4-devel)
+cargo run -p rsmatrix-gtk
+cargo run -p rsmatrix-gtk -- --ascii
 
 # Build macOS screensaver bundle (requires macOS + swiftc)
 make saver
@@ -54,6 +58,11 @@ rsmatrix-ffi     — C FFI wrapper around rsmatrix-core. Exposes 9 extern "C" fu
                    grid_height, set_charset). Consumed by the macOS Swift app and screensaver
                    via bridging header.
 
+rsmatrix-gtk     — Linux GTK4 GUI app. Uses gtk4-rs + Pango + Cairo for rendering.
+                   Directly depends on rsmatrix-core (no FFI). Supports fullscreen (F11),
+                   font zoom (Ctrl+=/Ctrl+-/Ctrl+0), charset switching (a/k/b).
+                   Prerequisite: gtk4-devel (Fedora) or libgtk-4-dev (Debian/Ubuntu).
+
 macos/                — All macOS native code (Swift/AppKit, not Cargo crates).
   MatrixRenderer.swift  — Shared CoreText renderer using CTFontDrawGlyphs with font fallback.
   rsmatrix-ffi-Bridging.h — Shared C bridging header for FFI functions.
@@ -76,3 +85,9 @@ macos/                — All macOS native code (Swift/AppKit, not Cargo crates)
 Flags: `-a`/`--ascii`, `-k`/`--kana`, `--fps N` (1-60, default 25)
 
 Runtime: `q`/`Ctrl+C` quit, `c` clear, `k` kana, `b` combined, `+`/`-` FPS, `=` reset FPS, `Ctrl+L` full redraw.
+
+## GTK GUI Flags and Runtime Keys
+
+Flags: `-a`/`--ascii`, `-k`/`--kana`
+
+Runtime: `q` quit, `c` clear, `a` ASCII, `k` kana, `b` combined, `F11` fullscreen, `Ctrl+=`/`Ctrl+-` font zoom, `Ctrl+0` reset font.
