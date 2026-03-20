@@ -50,11 +50,12 @@ impl ScreenBuffer {
         }
         let idx = (row as usize) * (self.width as usize) + (col as usize);
         let cell = &mut self.cells[idx];
-        // Always mark dirty on write — streams overwrite frequently with different colors
-        cell.ch = ch;
-        cell.fg = fg;
-        cell.bg = bg;
-        cell.dirty = true;
+        if cell.ch != ch || cell.fg != fg || cell.bg != bg {
+            cell.ch = ch;
+            cell.fg = fg;
+            cell.bg = bg;
+            cell.dirty = true;
+        }
     }
 
     /// Resize the buffer, clearing all content.

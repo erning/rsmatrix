@@ -1,6 +1,5 @@
 mod screen;
 
-use clap::error::ErrorKind;
 use clap::Parser;
 use crossterm::{
     cursor, event,
@@ -16,6 +15,26 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use screen::ScreenBuffer;
+
+/// RAII guard that restores terminal state on drop (including panics).
+struct TerminalGuard;
+
+impl TerminalGuard {
+    fn init() -> io::Result<Self> {
+        terminal::enable_raw_mode()?;
+        io::stdout().execute(EnterAlternateScreen)?;
+        io::stdout().execute(cursor::Hide)?;
+        Ok(Self)
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = io::stdout().execute(cursor::Show);
+        let _ = io::stdout().execute(LeaveAlternateScreen);
+        let _ = terminal::disable_raw_mode();
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "rsmatrix", about = "Matrix digital rain terminal effect")]
@@ -34,25 +53,7 @@ struct Cli {
 }
 
 fn main() {
-    let cli = match Cli::try_parse() {
-        Ok(cli) => cli,
-        Err(e) => {
-            match e.kind() {
-                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
-                    e.exit();
-                }
-                _ => {
-                    let args: Vec<String> = std::env::args().collect();
-                    if let Some(arg) = args.iter().skip(1).find(|a| !a.starts_with('-')) {
-                        println!("Unknown argument '{}'.", arg);
-                    } else {
-                        println!("Use --help to view all available options.");
-                    }
-                    return;
-                }
-            }
-        }
-    };
+    let cli = Cli::try_parse().unwrap_or_else(|e| e.exit());
 
     // Validate FPS
     if cli.fps < 1 || cli.fps > 60 {
@@ -71,15 +72,9 @@ fn main() {
         charset::set_charset(charset::CHARSET_COMBINED);
     }
 
-    // Initialize terminal
+    // Initialize terminal (RAII guard ensures cleanup on panic/exit)
+    let _guard = TerminalGuard::init().expect("failed to initialize terminal");
     let mut stdout = io::stdout();
-    terminal::enable_raw_mode().expect("failed to enable raw mode");
-    stdout
-        .execute(EnterAlternateScreen)
-        .expect("failed to enter alternate screen");
-    stdout
-        .execute(cursor::Hide)
-        .expect("failed to hide cursor");
 
     let (width, height) = terminal::size().expect("failed to get terminal size");
 
@@ -134,6 +129,7 @@ fn main() {
                             }
                             event::KeyCode::Char('q') => break,
                             event::KeyCode::Char('c') => {
+                                sim.clear();
                                 screen_buf.clear();
                             }
                             event::KeyCode::Char('k') => {
@@ -202,11 +198,7 @@ fn main() {
         let _ = screen_buf.flush(&mut stdout);
     }
 
-    // Restore terminal
-    let _ = stdout.execute(cursor::Show);
-    let _ = stdout.execute(LeaveAlternateScreen);
-    let _ = terminal::disable_raw_mode();
-
+    drop(_guard);
     println!("Thank you for connecting with Morpheus' Matrix API v4.2. Have a nice day!");
 }
 

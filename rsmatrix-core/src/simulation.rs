@@ -207,6 +207,21 @@ impl Simulation {
         }
     }
 
+    /// Clear the simulation: blank the grid and reset all columns/streams.
+    pub fn clear(&mut self) {
+        for cell in &mut self.grid {
+            *cell = Cell::blank();
+        }
+        let mut rng = rand::rng();
+        for column in &mut self.columns {
+            column.streams.clear();
+            let delay = rng.random_range(0..9000);
+            column.spawn_state = SpawnState::Delaying {
+                remaining_ms: delay,
+            };
+        }
+    }
+
     /// Resize the simulation grid. Clears all streams and resets columns.
     pub fn resize(&mut self, width: u32, height: u32) {
         self.width = width;

@@ -67,6 +67,15 @@ pub unsafe extern "C" fn rsmatrix_grid_height(sim: *const Simulation) -> u32 {
     }
 }
 
+/// # Safety
+/// `sim` must be a valid pointer returned by `rsmatrix_create`.
+#[no_mangle]
+pub unsafe extern "C" fn rsmatrix_clear(sim: *mut Simulation) {
+    if let Some(sim) = sim.as_mut() {
+        sim.clear();
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn rsmatrix_set_charset(mode: u32) {
     rsmatrix_core::charset::set_charset(mode as usize);

@@ -37,13 +37,14 @@ rsmatrix
 
 | Key | Action |
 |-----|--------|
-| `q` | Quit |
-| `c` | Cycle character set |
+| `q`, `Ctrl+C` | Quit |
+| `c` | Clear screen |
 | `k` | Katakana only |
-| `b` | ASCII only |
+| `b` | Combined (kana + ASCII) |
 | `+` | Increase FPS |
 | `-` | Decrease FPS |
 | `=` | Reset FPS to default |
+| `Ctrl+L` | Full redraw |
 
 ## macOS Screensaver
 

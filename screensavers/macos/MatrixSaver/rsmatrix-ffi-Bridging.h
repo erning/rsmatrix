@@ -19,6 +19,7 @@ void rsmatrix_resize(RsMatrixSimulation* _Nonnull sim, uint32_t width, uint32_t 
 const RsMatrixCell* _Nonnull rsmatrix_get_grid(const RsMatrixSimulation* _Nonnull sim);
 uint32_t rsmatrix_grid_width(const RsMatrixSimulation* _Nonnull sim);
 uint32_t rsmatrix_grid_height(const RsMatrixSimulation* _Nonnull sim);
+void rsmatrix_clear(RsMatrixSimulation* _Nonnull sim);
 void rsmatrix_set_charset(uint32_t mode);
 
 #endif
