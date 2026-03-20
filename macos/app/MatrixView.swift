@@ -2,12 +2,13 @@ import AppKit
 import QuartzCore
 
 class MatrixView: NSView {
-    let renderer = MatrixRenderer()
+    private(set) var renderer = MatrixRenderer()
     private var simulation: OpaquePointer?
     private var displayLink: CADisplayLink?
     private var lastFrameTime: TimeInterval = 0
     private var gridWidth: UInt32 = 0
     private var gridHeight: UInt32 = 0
+    private var fontSize: CGFloat = 14
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -122,5 +123,27 @@ class MatrixView: NSView {
         default:
             super.keyDown(with: event)
         }
+    }
+
+    // MARK: - Zoom
+
+    @objc func zoomIn(_ sender: Any?) {
+        fontSize = min(fontSize + 2, 28)
+        rebuildRenderer()
+    }
+
+    @objc func zoomOut(_ sender: Any?) {
+        fontSize = max(fontSize - 2, 6)
+        rebuildRenderer()
+    }
+
+    @objc func zoomReset(_ sender: Any?) {
+        fontSize = 14
+        rebuildRenderer()
+    }
+
+    private func rebuildRenderer() {
+        renderer = MatrixRenderer(fontSize: fontSize)
+        recalculateGrid()
     }
 }

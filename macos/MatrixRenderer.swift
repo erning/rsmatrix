@@ -35,8 +35,7 @@ class MatrixRenderer {
     // Track all fonts we've seen for batch drawing
     private var knownFonts: [FontKey: (font: CTFont, ascent: CGFloat)] = [:]
 
-    init(isPreview: Bool = false) {
-        let fontSize: CGFloat = isPreview ? 6 : 14
+    init(fontSize: CGFloat = 14) {
         font = NSFont(name: "Menlo", size: fontSize)
             ?? NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
 

@@ -58,7 +58,7 @@ class MatrixSaverView: ScreenSaverView {
         let fps = defaults.integer(forKey: prefFPS)
         animationTimeInterval = 1.0 / Double(max(fps, 1))
 
-        coreTextRenderer = MatrixRenderer(isPreview: isPreview)
+        coreTextRenderer = MatrixRenderer(fontSize: isPreview ? 6 : 14)
         recalculateGrid()
         lastFrameTime = CACurrentMediaTime()
     }

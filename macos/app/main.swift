@@ -54,6 +54,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             action: #selector(NSWindow.toggleFullScreen(_:)),
             keyEquivalent: "f"
         )
+        viewMenu.addItem(.separator())
+        viewMenu.addItem(
+            withTitle: "Zoom In",
+            action: #selector(MatrixView.zoomIn(_:)),
+            keyEquivalent: "+"
+        )
+        viewMenu.addItem(
+            withTitle: "Zoom Out",
+            action: #selector(MatrixView.zoomOut(_:)),
+            keyEquivalent: "-"
+        )
+        viewMenu.addItem(
+            withTitle: "Actual Size",
+            action: #selector(MatrixView.zoomReset(_:)),
+            keyEquivalent: "0"
+        )
 
         NSApplication.shared.mainMenu = mainMenu
     }
