@@ -59,6 +59,7 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
 
     override func startAnimation() {
         super.startAnimation()
+        guard !isPreview else { return }
         applyCharset()
 
         let defs = defaults
@@ -375,25 +376,21 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         defs.set(bloomCheck?.state == .on, forKey: prefBloom)
         defs.set(crtCheck?.state == .on, forKey: prefCRT)
         defs.set(blurCheck?.state == .on, forKey: prefBlur)
-
         defs.synchronize()
 
         applyCharset()
 
-        closeSheet()
+        dismissSheet()
     }
 
     @objc private func configSheetCancel(_ sender: Any?) {
-        closeSheet()
+        dismissSheet()
     }
 
-    private func closeSheet() {
-        guard let sheet = configSheet else { return }
-        if let parent = sheet.sheetParent {
-            parent.endSheet(sheet)
-        } else {
-            sheet.close()
-        }
+    private func dismissSheet() {
+        guard let sheet = configSheet, let parent = sheet.sheetParent else { return }
+        parent.endSheet(sheet)
+        configSheet = nil
     }
 
     // MARK: - Grid
