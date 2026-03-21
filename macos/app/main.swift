@@ -6,6 +6,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var matrixView: MatrixView!
     private var effectView: NSVisualEffectView!
     private var startFullscreen = false
+    private var initialCharset: UInt32 = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         parseArguments()
@@ -16,6 +17,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let frame = NSRect(x: 0, y: 0, width: 800, height: 600)
         matrixView = MatrixView(frame: frame, metalDevice: device)
+        if initialCharset != 0 {
+            matrixView.currentCharset = initialCharset
+        }
 
         // Container view holds the blur effect view behind the Metal view
         let containerView = NSView(frame: frame)
@@ -72,8 +76,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             case "--fullscreen", "-f":
                 startFullscreen = true
             case "--ascii", "-a":
+                initialCharset = 1
                 rsmatrix_set_charset(1)
             case "--kana", "-k":
+                initialCharset = 2
                 rsmatrix_set_charset(2)
             default:
                 break

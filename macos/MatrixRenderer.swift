@@ -70,7 +70,7 @@ class MatrixRenderer {
             return cached
         }
 
-        // Encode as UTF-16 (handles surrogate pairs for codepoints > U+FFFF)
+        // Encode as UTF-16 (current charset is BMP-only, no surrogate pairs)
         var utf16: [UniChar] = []
         UTF16.encode(scalar, into: { utf16.append($0) })
 

@@ -2,6 +2,7 @@ import Metal
 import MetalKit
 import AppKit
 import CoreText
+import CoreImage
 
 // MARK: - Uniform structs (must match Metal shader layout)
 
@@ -57,8 +58,10 @@ class MetalRenderer {
     private let compositePipeline: MTLRenderPipelineState
     private let blitPipeline: MTLRenderPipelineState
 
-    // Blit texture for CoreText rendering path
-    private(set) var blitTexture: MTLTexture?
+    // Blit textures for CoreText rendering path (triple-buffered)
+    private var blitTextures: [MTLTexture] = []
+    private var blitTextureIndex = 0
+    var blitTexture: MTLTexture? { blitTextures.isEmpty ? nil : blitTextures[blitTextureIndex] }
 
     // Glyph atlas
     private var glyphAtlas: MTLTexture!
@@ -582,12 +585,19 @@ class MetalRenderer {
     // MARK: - CoreText blit support
 
     func ensureBlitTexture(width: Int, height: Int) {
-        if let tex = blitTexture, tex.width == width, tex.height == height { return }
+        if let tex = blitTextures.first, tex.width == width, tex.height == height { return }
         let desc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
         desc.storageMode = .shared
         desc.usage = .shaderRead
-        blitTexture = device.makeTexture(descriptor: desc)
+        blitTextures = (0..<3).compactMap { _ in device.makeTexture(descriptor: desc) }
+        blitTextureIndex = 0
+    }
+
+    func advanceBlitTexture() {
+        if !blitTextures.isEmpty {
+            blitTextureIndex = (blitTextureIndex + 1) % blitTextures.count
+        }
     }
 
     func renderBlit(in view: MTKView) {
@@ -608,5 +618,90 @@ class MetalRenderer {
 
         cb.present(drawable)
         cb.commit()
+    }
+
+    // MARK: - Display refresh rate
+
+    static func displayRefreshRate(for screen: NSScreen?) -> Int {
+        guard let screen = screen else { return 60 }
+        let screenNumber = screen.deviceDescription[
+            NSDeviceDescriptionKey("NSScreenNumber")]
+        if let displayID = screenNumber as? CGDirectDisplayID,
+           let mode = CGDisplayCopyDisplayMode(displayID),
+           mode.refreshRate > 0 {
+            return Int(mode.refreshRate)
+        }
+        let fps = screen.maximumFramesPerSecond
+        return fps > 0 ? fps : 60
+    }
+
+    // MARK: - Wallpaper capture
+
+    private static let ciContext = CIContext()
+
+    static func captureBlurredDesktop(device: MTLDevice, screen: NSScreen?) -> MTLTexture? {
+        guard let screen = screen,
+              let wallpaperURL = NSWorkspace.shared.desktopImageURL(for: screen),
+              let nsImage = NSImage(contentsOf: wallpaperURL)
+        else { return nil }
+
+        let screenSize = screen.frame.size
+        let scale = screen.backingScaleFactor
+        let pixW = Int(screenSize.width * scale)
+        let pixH = Int(screenSize.height * scale)
+
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let drawCtx = CGContext(
+            data: nil, width: pixW, height: pixH,
+            bitsPerComponent: 8, bytesPerRow: pixW * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        drawCtx.interpolationQuality = .high
+
+        // Aspect-fill: scale to cover entire screen
+        let imgW = nsImage.size.width
+        let imgH = nsImage.size.height
+        let fillScale = max(screenSize.width / imgW, screenSize.height / imgH)
+        let drawW = imgW * fillScale * scale
+        let drawH = imgH * fillScale * scale
+        let drawX = (CGFloat(pixW) - drawW) / 2
+        let drawY = (CGFloat(pixH) - drawH) / 2
+        let drawRect = CGRect(x: drawX, y: drawY, width: drawW, height: drawH)
+
+        var imgRect = CGRect(x: 0, y: 0, width: nsImage.size.width, height: nsImage.size.height)
+        guard let cgImage = nsImage.cgImage(forProposedRect: &imgRect, context: nil, hints: nil) else { return nil }
+        drawCtx.draw(cgImage, in: drawRect)
+        guard let scaledCG = drawCtx.makeImage() else { return nil }
+
+        // Blur with CIFilter
+        let ciImage = CIImage(cgImage: scaledCG)
+        let blurred = ciImage.applyingGaussianBlur(sigma: 30)
+        guard let blurredCG = ciContext.createCGImage(blurred, from: ciImage.extent) else { return nil }
+
+        // Upload to Metal texture
+        let texW = blurredCG.width
+        let texH = blurredCG.height
+        let texDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm, width: texW, height: texH, mipmapped: false)
+        texDesc.storageMode = .shared
+        texDesc.usage = .shaderRead
+        guard let texture = device.makeTexture(descriptor: texDesc) else { return nil }
+
+        guard let uploadCtx = CGContext(
+            data: nil, width: texW, height: texH,
+            bitsPerComponent: 8, bytesPerRow: texW * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        uploadCtx.draw(blurredCG, in: CGRect(x: 0, y: 0, width: texW, height: texH))
+
+        if let data = uploadCtx.data {
+            texture.replace(
+                region: MTLRegionMake2D(0, 0, texW, texH),
+                mipmapLevel: 0, withBytes: data, bytesPerRow: texW * 4)
+        }
+
+        return texture
     }
 }

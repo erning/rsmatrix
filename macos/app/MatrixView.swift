@@ -1,6 +1,5 @@
 import MetalKit
 import QuartzCore
-import CoreImage
 
 enum RendererMode {
     case metal
@@ -14,8 +13,9 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
     private var gridWidth: UInt32 = 0
     private var gridHeight: UInt32 = 0
     private var fontSize: CGFloat = 14
-    private var currentCharset: UInt32 = 0
+    var currentCharset: UInt32 = 0
     private var isInFullscreen = false
+    private var lastBackingScale: CGFloat = 0
 
     // Renderer switching
     private var rendererMode: RendererMode = .metal
@@ -118,6 +118,7 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
             // Upload bitmap to Metal texture and present
             if let data = ctx.data {
                 metalRenderer.ensureBlitTexture(width: bitmapWidth, height: bitmapHeight)
+                metalRenderer.advanceBlitTexture()
                 let region = MTLRegionMake2D(0, 0, bitmapWidth, bitmapHeight)
                 metalRenderer.blitTexture?.replace(
                     region: region, mipmapLevel: 0,
@@ -151,6 +152,7 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
         super.viewDidMoveToWindow()
         if let window = window {
             lastFrameTime = CACurrentMediaTime()
+            lastBackingScale = window.backingScaleFactor
             updatePreferredFrameRate()
             NotificationCenter.default.addObserver(
                 self, selector: #selector(screenDidChange),
@@ -164,31 +166,32 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
         } else {
             NotificationCenter.default.removeObserver(
                 self, name: NSWindow.didChangeScreenNotification, object: nil)
+            NotificationCenter.default.removeObserver(
+                self, name: NSWindow.didEnterFullScreenNotification, object: nil)
+            NotificationCenter.default.removeObserver(
+                self, name: NSWindow.didExitFullScreenNotification, object: nil)
         }
     }
 
     @objc private func screenDidChange(_ notification: Notification) {
         updatePreferredFrameRate()
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        if scale != lastBackingScale && lastBackingScale != 0 {
+            metalRenderer.buildAtlas(scaleFactor: scale)
+            if rendererMode == .coreText {
+                bitmapWidth = 0
+                bitmapHeight = 0
+            }
+            recalculateGrid()
+        }
+        lastBackingScale = scale
     }
 
     // MARK: - Frame Rate
 
     private func updatePreferredFrameRate() {
-        let screen = window?.screen ?? NSScreen.main
-        var fps = 60
-        if let screen = screen {
-            let screenNumber = screen.deviceDescription[
-                NSDeviceDescriptionKey("NSScreenNumber")]
-            if let displayID = screenNumber as? CGDirectDisplayID,
-               let mode = CGDisplayCopyDisplayMode(displayID),
-               mode.refreshRate > 0 {
-                fps = Int(mode.refreshRate)
-            } else {
-                fps = screen.maximumFramesPerSecond
-                if fps <= 0 { fps = 60 }
-            }
-        }
-        preferredFramesPerSecond = fps
+        preferredFramesPerSecond = MetalRenderer.displayRefreshRate(
+            for: window?.screen ?? NSScreen.main)
         isPaused = false
         enableSetNeedsDisplay = false
     }
@@ -278,6 +281,7 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
         coreTextRenderer = nil
         bitmapContext = nil
         recalculateGrid()
+        updateContentMinSize()
         applyBlurVisualState()
     }
 
@@ -288,6 +292,7 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
         bitmapWidth = 0
         bitmapHeight = 0
         recalculateGrid()
+        updateContentMinSize()
         applyBlurVisualState()
     }
 
@@ -319,6 +324,10 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
         recalculateGrid()
         metalRenderer.resizeOffscreenTextures(
             width: Int(drawableSize.width), height: Int(drawableSize.height))
+        updateContentMinSize()
+    }
+
+    private func updateContentMinSize() {
         let cs = rendererMode == .coreText
             ? (coreTextRenderer?.cellSize ?? metalRenderer.cellSize)
             : metalRenderer.cellSize
@@ -366,71 +375,9 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
 
     private func captureAndBlurDesktop() {
         guard let device = self.device else { return }
-        guard let screen = window?.screen ?? NSScreen.main,
-              let wallpaperURL = NSWorkspace.shared.desktopImageURL(for: screen),
-              let nsImage = NSImage(contentsOf: wallpaperURL)
-        else { return }
-
-        // Render wallpaper into a bitmap at screen resolution (aspect-fill)
-        let screenSize = screen.frame.size
-        let scale = screen.backingScaleFactor
-        let pixW = Int(screenSize.width * scale)
-        let pixH = Int(screenSize.height * scale)
-
-        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
-        guard let drawCtx = CGContext(
-            data: nil, width: pixW, height: pixH,
-            bitsPerComponent: 8, bytesPerRow: pixW * 4,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return }
-        drawCtx.interpolationQuality = .high
-
-        // Aspect-fill: scale to cover entire screen
-        let imgW = nsImage.size.width
-        let imgH = nsImage.size.height
-        let fillScale = max(screenSize.width / imgW, screenSize.height / imgH)
-        let drawW = imgW * fillScale * scale
-        let drawH = imgH * fillScale * scale
-        let drawX = (CGFloat(pixW) - drawW) / 2
-        let drawY = (CGFloat(pixH) - drawH) / 2
-        let drawRect = CGRect(x: drawX, y: drawY, width: drawW, height: drawH)
-
-        var imgRect = CGRect(x: 0, y: 0, width: nsImage.size.width, height: nsImage.size.height)
-        guard let cgImage = nsImage.cgImage(forProposedRect: &imgRect, context: nil, hints: nil) else { return }
-        drawCtx.draw(cgImage, in: drawRect)
-        guard let scaledCG = drawCtx.makeImage() else { return }
-
-        // Blur with CIFilter
-        let ciImage = CIImage(cgImage: scaledCG)
-        let blurred = ciImage.applyingGaussianBlur(sigma: 30)
-        let ciContext = CIContext()
-        guard let blurredCG = ciContext.createCGImage(blurred, from: ciImage.extent) else { return }
-
-        // Upload to Metal texture
-        let texW = blurredCG.width
-        let texH = blurredCG.height
-        let texDesc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .rgba8Unorm, width: texW, height: texH, mipmapped: false)
-        texDesc.storageMode = .shared
-        texDesc.usage = .shaderRead
-        guard let texture = device.makeTexture(descriptor: texDesc) else { return }
-
-        guard let uploadCtx = CGContext(
-            data: nil, width: texW, height: texH,
-            bitsPerComponent: 8, bytesPerRow: texW * 4,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return }
-        uploadCtx.draw(blurredCG, in: CGRect(x: 0, y: 0, width: texW, height: texH))
-
-        if let data = uploadCtx.data {
-            texture.replace(
-                region: MTLRegionMake2D(0, 0, texW, texH),
-                mipmapLevel: 0, withBytes: data, bytesPerRow: texW * 4)
-        }
-
-        metalRenderer.backgroundTexture = texture
+        let screen = window?.screen ?? NSScreen.main
+        metalRenderer.backgroundTexture = MetalRenderer.captureBlurredDesktop(
+            device: device, screen: screen)
     }
 
     private func applyBlurVisualState() {
