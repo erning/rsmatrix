@@ -1,64 +1,63 @@
-import AppKit
+import MetalKit
 import QuartzCore
 
-class MatrixView: NSView {
-    private(set) var renderer = MatrixRenderer()
+class MatrixView: MTKView, MTKViewDelegate {
+    private(set) var metalRenderer: MetalRenderer
     private var simulation: OpaquePointer?
-    private var displayLink: CADisplayLink?
     private var lastFrameTime: TimeInterval = 0
     private var gridWidth: UInt32 = 0
     private var gridHeight: UInt32 = 0
     private var fontSize: CGFloat = 14
 
+    /// Set by AppDelegate for background blur toggle
+    var backgroundEffectView: NSVisualEffectView?
+
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
 
     override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .init(image: NSImage(size: NSSize(width: 1, height: 1)), hotSpot: .zero))
+        addCursorRect(bounds, cursor: .init(
+            image: NSImage(size: NSSize(width: 1, height: 1)), hotSpot: .zero))
     }
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
+    init(frame: NSRect, metalDevice: MTLDevice) {
+        self.metalRenderer = MetalRenderer(device: metalDevice, fontSize: fontSize)
+        super.init(frame: frame, device: metalDevice)
+
+        colorPixelFormat = .bgra8Unorm
+        clearColor = MTLClearColorMake(0, 0, 0, 1)
+        preferredFramesPerSecond = 60
+        isPaused = false
+        enableSetNeedsDisplay = false
+        delegate = self
+
         wantsLayer = true
         layer?.isOpaque = true
         layer?.backgroundColor = NSColor.black.cgColor
+
         recalculateGrid()
         lastFrameTime = CACurrentMediaTime()
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    required init(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
     }
 
     deinit {
-        displayLink?.invalidate()
         if let sim = simulation {
             rsmatrix_destroy(sim)
         }
     }
 
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        if window != nil {
-            startDisplayLink()
-        } else {
-            displayLink?.invalidate()
-            displayLink = nil
-        }
+    // MARK: - MTKViewDelegate
+
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+        metalRenderer.resizeOffscreenTextures(
+            width: Int(size.width), height: Int(size.height))
     }
 
-    // MARK: - CADisplayLink
-
-    private func startDisplayLink() {
-        guard displayLink == nil else { return }
-        lastFrameTime = CACurrentMediaTime()
-        let dl = self.displayLink(target: self, selector: #selector(displayLinkFired(_:)))
-        dl.add(to: .main, forMode: .common)
-        displayLink = dl
-    }
-
-    @objc private func displayLinkFired(_ sender: CADisplayLink) {
+    func draw(in view: MTKView) {
         let now = CACurrentMediaTime()
         let delta = now - lastFrameTime
         lastFrameTime = now
@@ -68,24 +67,20 @@ class MatrixView: NSView {
             rsmatrix_tick(sim, deltaMs)
         }
 
-        needsDisplay = true
-    }
-
-    // MARK: - Drawing
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
-
-        context.setFillColor(red: 0, green: 0, blue: 0, alpha: 1)
-        context.fill(bounds)
-
         guard let sim = simulation else { return }
         let grid = rsmatrix_get_grid(sim)
-        renderer.render(
-            context: context, grid: grid,
+        metalRenderer.updateInstances(
+            grid: grid,
             width: rsmatrix_grid_width(sim),
-            height: rsmatrix_grid_height(sim)
-        )
+            height: rsmatrix_grid_height(sim))
+        metalRenderer.render(in: self)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil {
+            lastFrameTime = CACurrentMediaTime()
+        }
     }
 
     // MARK: - Resize
@@ -96,9 +91,9 @@ class MatrixView: NSView {
     }
 
     private func recalculateGrid() {
-        let cellSize = renderer.cellSize
-        let newWidth = max(UInt32(bounds.width / cellSize.width), 1)
-        let newHeight = max(UInt32(bounds.height / cellSize.height), 1)
+        let cs = metalRenderer.cellSize
+        let newWidth = max(UInt32(bounds.width / cs.width), 1)
+        let newHeight = max(UInt32(bounds.height / cs.height), 1)
 
         if newWidth == gridWidth && newHeight == gridHeight { return }
 
@@ -152,11 +147,38 @@ class MatrixView: NSView {
     }
 
     private func rebuildRenderer() {
-        renderer = MatrixRenderer(fontSize: fontSize)
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        metalRenderer.rebuildForFontSize(fontSize, scaleFactor: scale)
         recalculateGrid()
+        // Re-create offscreen textures for the new cell size
+        metalRenderer.resizeOffscreenTextures(
+            width: Int(drawableSize.width), height: Int(drawableSize.height))
         window?.contentMinSize = NSSize(
-            width: renderer.cellSize.width * 20,
-            height: renderer.cellSize.height * 10
+            width: metalRenderer.cellSize.width * 20,
+            height: metalRenderer.cellSize.height * 10
         )
+    }
+
+    // MARK: - Effects
+
+    @objc func toggleBloom(_ sender: Any?) {
+        metalRenderer.bloomEnabled.toggle()
+    }
+
+    @objc func toggleCRT(_ sender: Any?) {
+        metalRenderer.crtEnabled.toggle()
+    }
+
+    @objc func toggleBackgroundBlur(_ sender: Any?) {
+        metalRenderer.backgroundBlurEnabled.toggle()
+        let enabled = metalRenderer.backgroundBlurEnabled
+
+        backgroundEffectView?.isHidden = !enabled
+        layer?.isOpaque = !enabled
+
+        if let window = window {
+            window.isOpaque = !enabled
+            window.backgroundColor = enabled ? .clear : .black
+        }
     }
 }

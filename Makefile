@@ -1,7 +1,9 @@
 RUST_LIB = target/release/librsmatrix_ffi.a
 BRIDGING_HEADER = macos/rsmatrix-ffi-Bridging.h
 SWIFT_FILES = macos/saver/MatrixSaverView.swift macos/MatrixRenderer.swift
-APP_SWIFT_FILES = macos/app/main.swift macos/app/MatrixView.swift macos/MatrixRenderer.swift
+APP_SWIFT_FILES = macos/app/main.swift macos/app/MatrixView.swift macos/MetalRenderer.swift
+METAL_SOURCE = macos/app/Shaders.metal
+METAL_LIB = $(BUILD_DIR)/Matrix.app/Contents/Resources/default.metallib
 BUILD_DIR = build
 SAVER_DIR = $(BUILD_DIR)/MatrixSaver.saver
 
@@ -31,7 +33,13 @@ saver: $(RUST_LIB) $(SWIFT_FILES) $(BRIDGING_HEADER)
 		-o $(SAVER_DIR)/Contents/MacOS/MatrixSaver
 	codesign --force --sign - $(SAVER_DIR)
 
-app: $(RUST_LIB) $(APP_SWIFT_FILES) $(BRIDGING_HEADER)
+$(METAL_LIB): $(METAL_SOURCE)
+	mkdir -p $(BUILD_DIR)/Matrix.app/Contents/Resources
+	xcrun metal -c $(METAL_SOURCE) -o $(BUILD_DIR)/Shaders.air
+	xcrun metallib $(BUILD_DIR)/Shaders.air -o $(METAL_LIB)
+	rm -f $(BUILD_DIR)/Shaders.air
+
+app: $(RUST_LIB) $(APP_SWIFT_FILES) $(BRIDGING_HEADER) $(METAL_LIB)
 	mkdir -p $(BUILD_DIR)/Matrix.app/Contents/MacOS
 	cp macos/app/Info.plist $(BUILD_DIR)/Matrix.app/Contents/
 	swiftc \
@@ -40,6 +48,8 @@ app: $(RUST_LIB) $(APP_SWIFT_FILES) $(BRIDGING_HEADER)
 		-L target/release \
 		-lrsmatrix_ffi \
 		-framework AppKit \
+		-framework Metal \
+		-framework MetalKit \
 		-framework CoreText \
 		-framework QuartzCore \
 		$(APP_SWIFT_FILES) \

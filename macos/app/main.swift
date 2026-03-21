@@ -1,16 +1,40 @@
 import AppKit
+import Metal
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
+    private var matrixView: MatrixView!
+    private var effectView: NSVisualEffectView!
     private var startFullscreen = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         parseArguments()
 
-        let matrixView = MatrixView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            fatalError("Metal is not supported on this device")
+        }
+
+        let frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+        matrixView = MatrixView(frame: frame, metalDevice: device)
+
+        // Container view holds the blur effect view behind the Metal view
+        let containerView = NSView(frame: frame)
+
+        effectView = NSVisualEffectView(frame: frame)
+        effectView.material = .hudWindow
+        effectView.blendingMode = .behindWindow
+        effectView.state = .active
+        effectView.autoresizingMask = [.width, .height]
+        effectView.isHidden = true
+
+        matrixView.autoresizingMask = [.width, .height]
+        matrixView.backgroundEffectView = effectView
+
+        containerView.addSubview(effectView)
+        containerView.addSubview(matrixView)
 
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            contentRect: frame,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -18,10 +42,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.title = "Matrix"
         window.appearance = NSAppearance(named: .darkAqua)
         window.titlebarAppearsTransparent = true
-        window.contentView = matrixView
+        window.contentView = containerView
         window.contentMinSize = NSSize(
-            width: matrixView.renderer.cellSize.width * 20,
-            height: matrixView.renderer.cellSize.height * 10
+            width: matrixView.metalRenderer.cellSize.width * 20,
+            height: matrixView.metalRenderer.cellSize.height * 10
         )
         window.tabbingMode = .disallowed
         window.collectionBehavior = .fullScreenPrimary
@@ -60,6 +84,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupMenu() {
         let mainMenu = NSMenu()
 
+        // App menu
         let appMenuItem = NSMenuItem()
         mainMenu.addItem(appMenuItem)
         let appMenu = NSMenu()
@@ -70,6 +95,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: "q"
         )
 
+        // View menu
         let viewMenuItem = NSMenuItem()
         mainMenu.addItem(viewMenuItem)
         let viewMenu = NSMenu(title: "View")
@@ -96,6 +122,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: "0"
         )
 
+        // Characters menu
         let charMenuItem = NSMenuItem()
         mainMenu.addItem(charMenuItem)
         let charMenu = NSMenu(title: "Characters")
@@ -114,6 +141,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             withTitle: "Katakana Only",
             action: #selector(MatrixView.setCharsetKana(_:)),
             keyEquivalent: "k"
+        )
+
+        // Effects menu
+        let effectsMenuItem = NSMenuItem()
+        mainMenu.addItem(effectsMenuItem)
+        let effectsMenu = NSMenu(title: "Effects")
+        effectsMenuItem.submenu = effectsMenu
+        effectsMenu.addItem(
+            withTitle: "Toggle Bloom",
+            action: #selector(MatrixView.toggleBloom(_:)),
+            keyEquivalent: "g"
+        )
+        effectsMenu.addItem(
+            withTitle: "Toggle CRT",
+            action: #selector(MatrixView.toggleCRT(_:)),
+            keyEquivalent: "r"
+        )
+        effectsMenu.addItem(
+            withTitle: "Toggle Background Blur",
+            action: #selector(MatrixView.toggleBackgroundBlur(_:)),
+            keyEquivalent: "t"
         )
 
         NSApplication.shared.mainMenu = mainMenu
