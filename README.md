@@ -10,10 +10,9 @@ Matrix digital rain in your terminal, written in Rust.
 - Configurable frame rate (1–60 FPS), adjustable at runtime
 - True 24-bit RGB color (consistent across terminal themes)
 - Dynamic terminal resize handling
-- macOS screensaver (via FFI + Swift)
+- macOS standalone GUI app with Metal GPU rendering, post-processing effects (bloom, CRT scanlines, background blur), and font zoom
+- macOS screensaver with configurable options (charset, font size, effects)
 - Linux GTK4 GUI app with fullscreen and font zoom
-- macOS standalone GUI app with fullscreen and font zoom
-- Cross-platform screensaver support planned (Linux, Windows)
 
 ## Installation
 
@@ -83,14 +82,32 @@ Options: `-a`/`--ascii`, `-k`/`--kana`, `-f`/`--fullscreen`.
 
 ## macOS App
 
-Build and run the standalone GUI app:
+Build and run the standalone GUI app (requires Metal-capable Mac):
 
 ```sh
 make app
 make run-app
 ```
 
-Supports `-a`/`--ascii`, `-k`/`--kana`, `-f`/`--fullscreen` flags. Runtime keys: `a`/`k`/`b` charset, `f` fullscreen, `+`/`-`/`0` font zoom, `c` clear, `q` quit.
+Supports `-a`/`--ascii`, `-k`/`--kana`, `-f`/`--fullscreen` flags.
+
+### Menus
+
+| Menu | Items |
+|------|-------|
+| **View** | Toggle Fullscreen (`Cmd+F`), Zoom In/Out/Reset (`Cmd+`/`-`/`0`), Renderer: Metal (`Cmd+1`) / CoreText (`Cmd+2`) |
+| **Characters** | Combined (`Cmd+B`), ASCII Only (`Cmd+A`), Katakana Only (`Cmd+K`) |
+| **Effects** | Bloom (`Cmd+G`), CRT (`Cmd+R`), Background Blur (`Cmd+T`) |
+
+Effects are Metal-only. Background blur shows the desktop wallpaper (blurred and darkened) behind the rain in windowed mode; in fullscreen it captures the wallpaper image as the background.
+
+### Runtime Keys
+
+| Key | Action |
+|-----|--------|
+| `c` | Clear screen |
+| `Escape` | Exit fullscreen |
+| `q` | Quit |
 
 ## macOS Screensaver
 
@@ -101,17 +118,21 @@ make saver
 make install-saver
 ```
 
-Then open **System Settings > Screen Saver** to select MatrixSaver. Click **Options…** to configure character set and frame rate.
+Then open **System Settings > Screen Saver** to select MatrixSaver. Click **Options…** to configure:
+
+- **Characters**: Combined / ASCII / Katakana
+- **Font Size**: 10–24 pt
+- **Effects**: Bloom, CRT scanlines, Background Blur (wallpaper)
 
 ## Project Structure
 
-| Crate | Purpose |
-|-------|---------|
-| `rsmatrix-core` | Simulation engine (charset, column/stream logic) |
-| `rsmatrix-cli` | Terminal UI |
-| `rsmatrix-ffi` | C FFI layer for Swift integration |
+| Crate / Directory | Purpose |
+|-------------------|---------|
+| `rsmatrix-core` | Platform-agnostic simulation engine (charset, column/stream logic). Only depends on `rand`. |
+| `rsmatrix-cli` | Terminal frontend (crossterm rendering, clap CLI args) |
+| `rsmatrix-ffi` | C FFI static library for Swift integration |
 | `rsmatrix-gtk` | Linux GTK4 GUI app (Pango + Cairo rendering) |
-| `macos/` | macOS native code (screensaver + standalone app) |
+| `macos/` | macOS native code: Metal GPU renderer, CoreText renderer, screensaver bundle, standalone app |
 
 ## Acknowledgments
 

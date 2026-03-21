@@ -48,7 +48,7 @@ make clean
 
 ```
 rsmatrix-core    — Platform-agnostic simulation engine. Only depends on `rand`.
-                   Exports: Simulation, Cell (#[repr(C)]), Column, Stream, charset, types.
+                   Exports: Simulation, Cell (#[repr(C)]), charset, types.
 
 rsmatrix-cli     — Terminal frontend. Uses crossterm for rendering, clap for CLI args,
                    signal-hook for SIGINT. Contains ScreenBuffer with dirty-cell tracking.
@@ -58,15 +58,21 @@ rsmatrix-ffi     — C FFI wrapper around rsmatrix-core. Exposes 9 extern "C" fu
                    grid_height, set_charset). Consumed by the macOS Swift app and screensaver
                    via bridging header.
 
-rsmatrix-gtk     — Linux GTK4 GUI app. Uses gtk4-rs + Pango + Cairo for rendering.
+rsmatrix-gtk     — Linux GTK4 GUI app. Uses gtk4-rs (v4_12) + Pango + Cairo for rendering.
                    Directly depends on rsmatrix-core (no FFI).
                    Prerequisite: gtk4-devel (Fedora) or libgtk-4-dev (Debian/Ubuntu).
 
-macos/                — All macOS native code (Swift/AppKit, not Cargo crates).
-  MatrixRenderer.swift  — Shared CoreText renderer using CTFontDrawGlyphs with font fallback.
+macos/                — All macOS native code (Swift/AppKit/Metal, not Cargo crates).
+  MetalRenderer.swift   — Metal GPU rendering: instanced glyph drawing, bloom, CRT scanlines,
+                          background blur/wallpaper. Shared by app and screensaver.
+  MatrixRenderer.swift  — CoreText renderer using CTFontDrawGlyphs with font fallback.
+  Shaders.metal         — Metal shader source (compiled to .metallib at build time).
   rsmatrix-ffi-Bridging.h — Shared C bridging header for FFI functions.
-  saver/                — ScreenSaverView (.saver bundle).
-  app/                  — Standalone GUI app (.app bundle). NSWindow + CVDisplayLink.
+  saver/                — ScreenSaverView (.saver bundle) with configure sheet (options UI).
+  app/                  — Standalone GUI app (.app bundle). NSWindow + MTKView.
+    main.swift            — NSApplication entry, CLI arg parsing, menu bar setup.
+    MatrixView.swift      — MTKView subclass: frame loop, renderer switching, keyboard, effects.
+    MatrixRenderer.swift  — App-specific re-export (same as shared MatrixRenderer).
 ```
 
 **Data flow**: External frontends create a `Simulation`, call `tick(delta_ms)` each frame, then read the flat `grid: Vec<Cell>` for rendering. The simulation is pure data — no threads, no I/O.
@@ -78,3 +84,5 @@ macos/                — All macOS native code (Swift/AppKit, not Cargo crates)
 - **Flat row-major grid**: `grid: Vec<Cell>` with `#[repr(C)]` cells (codepoint: u32, r/g/b: u8) — cache-friendly and FFI-passable as raw pointer.
 - **Lock-free charset switching**: Character set selection uses `AtomicUsize` for thread-safe toggling without mutexes.
 - **Color values are hardcoded 24-bit RGB**, not ANSI palette indices.
+- **Metal GPU rendering on macOS**: Instanced draw calls render glyphs from a pre-rasterized font atlas texture. Post-processing effects (bloom via multi-pass Gaussian blur, CRT scanlines) are applied as fullscreen shader passes. Frame rate adapts to display refresh rate via `CGDisplayCopyDisplayMode`.
+- **Background blur**: In windowed mode, `NSVisualEffectView` provides live desktop blur behind the transparent window. In fullscreen, the wallpaper image is captured via `NSWorkspace.desktopImageURL`, Gaussian-blurred with CIFilter, darkened, and composited as a Metal background texture.

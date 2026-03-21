@@ -14,7 +14,7 @@ For the rationale behind each architectural divergence from the Go original, see
 
 ```toml
 [workspace]
-members = ["rsmatrix-core", "rsmatrix-ffi", "rsmatrix-cli", "screensavers/linux", "screensavers/windows"]
+members = ["rsmatrix-core", "rsmatrix-ffi", "rsmatrix-cli", "rsmatrix-gtk"]
 resolver = "2"
 default-members = ["rsmatrix-cli"]
 
@@ -38,6 +38,7 @@ lto = true
 | `rsmatrix-core` | `rand` | Simulation engine — character sets, grid, streams, columns |
 | `rsmatrix-cli` | `crossterm`, `clap`, `signal-hook`, `rsmatrix-core` | Terminal frontend — event loop, screen buffer, rendering |
 | `rsmatrix-ffi` | `rsmatrix-core` | C FFI for Swift/external consumers |
+| `rsmatrix-gtk` | `gtk4`, `pangocairo`, `clap`, `rsmatrix-core` | Linux GTK4 GUI app |
 
 **Rationale**:
 - `crossterm` over `ratatui`: we need direct cell-level rendering, not widgets. crossterm is the closest analog to Go's tcell.
@@ -52,13 +53,14 @@ lto = true
 ```
 rsmatrix/
 ├── Cargo.toml              # Workspace root
-├── Makefile                 # macOS screensaver build
+├── Makefile                 # macOS build orchestration (app + screensaver)
 ├── rsmatrix-core/
 │   └── src/
 │       ├── lib.rs
 │       ├── charset.rs       # Character set definitions and atomic switching
 │       ├── simulation.rs    # Tick-based simulation engine (grid, columns, streams)
-│       └── types.rs         # Shared types (Sizes)
+│       ├── types.rs         # Shared types (Sizes)
+│       └── tests.rs         # Unit tests
 ├── rsmatrix-cli/
 │   └── src/
 │       ├── main.rs          # Entry point, CLI, terminal init, event loop
@@ -66,10 +68,17 @@ rsmatrix/
 ├── rsmatrix-ffi/
 │   └── src/
 │       └── lib.rs           # C FFI functions wrapping Simulation
-└── screensavers/
-    ├── macos/               # Swift ScreenSaver bundle consuming rsmatrix-ffi
-    ├── linux/               # Planned: XScreenSaver module
-    └── windows/             # Planned: Windows SCR screensaver
+├── rsmatrix-gtk/
+│   └── src/
+│       ├── main.rs          # GTK app, CLI args, keyboard controls
+│       └── renderer.rs      # Pango+Cairo rendering
+└── macos/                   # macOS native code (Swift/Metal)
+    ├── MetalRenderer.swift   # Metal GPU rendering (instancing, bloom, CRT, blur)
+    ├── MatrixRenderer.swift  # CoreText fallback renderer
+    ├── Shaders.metal         # Metal shader source
+    ├── rsmatrix-ffi-Bridging.h
+    ├── saver/                # ScreenSaverView (.saver bundle) with options UI
+    └── app/                  # Standalone GUI app (.app bundle)
 ```
 
 ---
@@ -281,10 +290,10 @@ This is simpler than the plan's column manager approach (which had to send stop 
 
 ### Phase 1: Core Library (`rsmatrix-core`)
 
-1. **Scaffold workspace** — Create workspace `Cargo.toml`, three crate directories
+1. **Scaffold workspace** — Create workspace `Cargo.toml`, crate directories
 2. **Character sets** — `charset.rs` with static slices, `OnceLock` combined set, atomic switching
 3. **Types** — `types.rs` with `Sizes` struct (`max_streams_per_column` computation)
-4. **Simulation engine** — `simulation.rs` with `Cell`, `Stream`, `Column`, `SpawnState`, `Simulation::new()`, `tick()`, `resize()`, `grid()`
+4. **Simulation engine** — `simulation.rs` with `Cell`, `Stream`, `Column`, `SpawnState`, `Simulation::new()`, `tick()`, `resize()`, `clear()`, `grid()`
 
 ### Phase 2: Terminal Frontend (`rsmatrix-cli`)
 
@@ -296,17 +305,22 @@ This is simpler than the plan's column manager approach (which had to send stop 
 
 ### Phase 3: FFI Layer (`rsmatrix-ffi`)
 
-10. **C FFI** — `rsmatrix_create`, `rsmatrix_destroy`, `rsmatrix_tick`, `rsmatrix_resize`, `rsmatrix_get_grid`, `rsmatrix_grid_width`, `rsmatrix_grid_height`, `rsmatrix_set_charset`
+10. **C FFI** — `rsmatrix_create`, `rsmatrix_destroy`, `rsmatrix_tick`, `rsmatrix_resize`, `rsmatrix_clear`, `rsmatrix_get_grid`, `rsmatrix_grid_width`, `rsmatrix_grid_height`, `rsmatrix_set_charset`
 
-### Phase 4: Platform Screensavers
+### Phase 4: Linux GTK4 GUI (`rsmatrix-gtk`)
 
-11. **macOS screensaver** — Swift `ScreenSaverView` subclass consuming `rsmatrix-ffi` via bridging header, `Makefile` for build/install
+11. **GTK app** — `gtk4-rs` window with Pango + Cairo rendering, fullscreen toggle, font zoom, charset switching
+
+### Phase 5: macOS Native Apps
+
+12. **macOS screensaver** — Swift `ScreenSaverView` subclass consuming `rsmatrix-ffi` via bridging header, Metal rendering, configure sheet with options (charset, font size, effects)
+13. **macOS standalone app** — Swift `NSWindow` + `MTKView`, menu bar (View, Characters, Effects), Metal GPU rendering with bloom/CRT/background blur, CoreText fallback renderer
 
 ---
 
 ## 8. Verification
 
-1. **Build**: `cargo build` and `cargo build --release` succeed with no warnings
+1. **Build**: `cargo build` and `cargo build --release` succeed with no warnings. `cargo test -p rsmatrix-core` passes all unit tests. `cargo check --workspace` validates all crates compile.
 2. **CLI flags**:
    - `cargo run -- --help` prints usage info
    - `cargo run -- --fps 0` prints FPS out-of-range error and exits with code 1
@@ -315,8 +329,9 @@ This is simpler than the plan's column manager approach (which had to send stop 
    - `cargo run -- --kana` runs with katakana only
    - `cargo run` (no flags) runs with combined character set
 3. **Visual correctness**: Characters cascade down in green columns with bright white/silver heads
-4. **Runtime keys**: q quits, c clears, k switches to kana, b switches to combined, +/- adjust speed, = resets speed, Ctrl+L redraws
+4. **Runtime keys**: q quits, c clears, a switches to ASCII, k switches to kana, b switches to combined, +/- adjust speed, = resets speed, Ctrl+L redraws
 5. **Resize handling**: Resize the terminal window — columns should be added/removed dynamically
 6. **Clean exit**: Terminal is properly restored after quitting (cursor visible, normal mode, original screen)
-7. **Startup/exit messages**: Startup and exit messages are printed correctly
-8. **macOS screensaver**: `make saver && make install` builds and installs the screensaver bundle
+7. **GTK app**: `cargo run -p rsmatrix-gtk` launches, fullscreen/font zoom/charset switching works
+8. **macOS app**: `make app && make run-app` builds and launches the standalone app with Metal rendering
+9. **macOS screensaver**: `make saver && make install-saver` builds and installs the screensaver bundle

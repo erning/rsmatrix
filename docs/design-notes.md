@@ -4,19 +4,22 @@ The original `docs/implementation-plan.md` was a faithful translation of `gomatr
 
 ---
 
-## 1. Three-Layer Workspace (was: Single Crate)
+## 1. Multi-Crate Workspace (was: Single Crate)
 
 **Plan**: A single crate with `src/main.rs`, `src/screen.rs`, `src/column.rs`, `src/stream.rs`, `src/charset.rs`, `src/types.rs`.
 
-**Actual**: A Cargo workspace with three crates:
+**Actual**: A Cargo workspace with four crates:
 
 | Crate | Purpose | Dependencies |
 |-------|---------|-------------|
 | `rsmatrix-core` | Simulation engine (charset, grid, streams, columns) | `rand` only |
 | `rsmatrix-cli` | Terminal UI (event loop, screen buffer, rendering) | `crossterm`, `clap`, `signal-hook`, `rsmatrix-core` |
 | `rsmatrix-ffi` | C FFI for external consumers (Swift, etc.) | `rsmatrix-core` |
+| `rsmatrix-gtk` | Linux GTK4 GUI app | `gtk4`, `pangocairo`, `clap`, `rsmatrix-core` |
 
-**Why this is better**: The core simulation has zero platform dependencies. Any frontend — terminal, macOS screensaver, Linux XScreenSaver, Windows SCR, WASM canvas — can drive the same `Simulation::tick()`. This directly enabled the macOS screensaver (Swift consuming `rsmatrix-ffi`) and the planned Linux/Windows screensavers. A single-crate design would have entangled terminal-specific code (crossterm, raw mode, alternate screen) with simulation logic, making reuse impossible without major refactoring.
+Additionally, `macos/` contains Swift/Metal code (not a Cargo crate) for the macOS standalone app and screensaver, consuming `rsmatrix-ffi`.
+
+**Why this is better**: The core simulation has zero platform dependencies. Any frontend — terminal, macOS screensaver, GTK4 app, WASM canvas — can drive the same `Simulation::tick()`. This directly enabled the macOS screensaver and app (Swift consuming `rsmatrix-ffi`), and the GTK4 app (directly linking `rsmatrix-core`). A single-crate design would have entangled terminal-specific code (crossterm, raw mode, alternate screen) with simulation logic, making reuse impossible without major refactoring.
 
 ---
 
@@ -113,7 +116,7 @@ The `SpawnState` enum (`Idle` / `Delaying { remaining_ms }`) replaces the channe
 
 ---
 
-## 5. Reduced Dependencies (8 → 4 CLI, 1 core)
+## 5. Reduced Dependencies (8 → 4 CLI, 1 core, 3 GTK)
 
 | Dependency | Plan | Actual | Reason for change |
 |-----------|------|--------|-------------------|
@@ -125,8 +128,10 @@ The `SpawnState` enum (`Idle` / `Delaying { remaining_ms }`) replaces the channe
 | `log` | 0.4 | removed | Debug logging not implemented |
 | `simplelog` | 0.12 | removed | Debug logging not implemented |
 | `dirs` | 6 | removed | No log file → no home dir lookup |
+| `gtk4` | — | 0.9 | Added for `rsmatrix-gtk` |
+| `pangocairo` | — | 0.20 | Added for `rsmatrix-gtk` rendering |
 
-The core crate (`rsmatrix-core`) depends only on `rand`. This is critical for FFI consumers — a macOS screensaver linked against the core should not pull in terminal libraries.
+The core crate (`rsmatrix-core`) depends only on `rand`. This is critical for FFI consumers — a macOS screensaver linked against the core should not pull in terminal libraries. The GTK app links `rsmatrix-core` directly (no FFI overhead).
 
 ---
 

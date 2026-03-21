@@ -87,13 +87,12 @@ Character selection within the active set is uniformly random.
 | `q`          | Quit the application |
 | `Ctrl+L`     | Synchronize/redraw the screen |
 | `c`          | Clear the screen |
+| `a`          | Switch character set to ASCII only |
 | `k`          | Switch character set to katakana only |
 | `b`          | Switch character set to combined (katakana + ASCII) |
 | `+`          | Increase FPS by 1 (capped at 60) |
 | `-`          | Decrease FPS by 1 (capped at 1) |
 | `=`          | Reset FPS to the initial value from the command-line flag |
-
-There is no runtime key to switch to ASCII-only mode; that mode is only available via the `--ascii` flag at startup.
 
 ---
 
