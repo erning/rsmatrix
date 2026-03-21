@@ -42,7 +42,7 @@ make install-saver
 make clean
 ```
 
-There are no tests in this codebase currently. `cargo check --workspace` is the quickest way to validate all crates compile.
+`cargo test -p rsmatrix-core` runs the unit tests. `cargo check --workspace` is the quickest way to validate all crates compile.
 
 ## Workspace Architecture
 
@@ -59,15 +59,14 @@ rsmatrix-ffi     — C FFI wrapper around rsmatrix-core. Exposes 9 extern "C" fu
                    via bridging header.
 
 rsmatrix-gtk     — Linux GTK4 GUI app. Uses gtk4-rs + Pango + Cairo for rendering.
-                   Directly depends on rsmatrix-core (no FFI). Supports fullscreen (F11),
-                   font zoom (Ctrl+=/Ctrl+-/Ctrl+0), charset switching (a/k/b).
+                   Directly depends on rsmatrix-core (no FFI).
                    Prerequisite: gtk4-devel (Fedora) or libgtk-4-dev (Debian/Ubuntu).
 
 macos/                — All macOS native code (Swift/AppKit, not Cargo crates).
   MatrixRenderer.swift  — Shared CoreText renderer using CTFontDrawGlyphs with font fallback.
   rsmatrix-ffi-Bridging.h — Shared C bridging header for FFI functions.
-  saver/                — ScreenSaverView (.saver bundle). Configurable charset/FPS via Options panel.
-  app/                  — Standalone GUI app (.app bundle). NSWindow + CVDisplayLink, fullscreen-capable.
+  saver/                — ScreenSaverView (.saver bundle).
+  app/                  — Standalone GUI app (.app bundle). NSWindow + CVDisplayLink.
 ```
 
 **Data flow**: External frontends create a `Simulation`, call `tick(delta_ms)` each frame, then read the flat `grid: Vec<Cell>` for rendering. The simulation is pure data — no threads, no I/O.
@@ -79,15 +78,3 @@ macos/                — All macOS native code (Swift/AppKit, not Cargo crates)
 - **Flat row-major grid**: `grid: Vec<Cell>` with `#[repr(C)]` cells (codepoint: u32, r/g/b: u8) — cache-friendly and FFI-passable as raw pointer.
 - **Lock-free charset switching**: Character set selection uses `AtomicUsize` for thread-safe toggling without mutexes.
 - **Color values are hardcoded 24-bit RGB**, not ANSI palette indices.
-
-## CLI Flags and Runtime Keys
-
-Flags: `-a`/`--ascii`, `-k`/`--kana`, `--fps N` (1-60, default 25)
-
-Runtime: `q`/`Ctrl+C` quit, `c` clear, `k` kana, `b` combined, `+`/`-` FPS, `=` reset FPS, `Ctrl+L` full redraw.
-
-## GTK GUI Flags and Runtime Keys
-
-Flags: `-a`/`--ascii`, `-k`/`--kana`
-
-Runtime: `q` quit, `c` clear, `a` ASCII, `k` kana, `b` combined, `F11` fullscreen, `Ctrl+=`/`Ctrl+-` font zoom, `Ctrl+0` reset font.

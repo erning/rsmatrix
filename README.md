@@ -12,6 +12,7 @@ Matrix digital rain in your terminal, written in Rust.
 - Dynamic terminal resize handling
 - macOS screensaver (via FFI + Swift)
 - Linux GTK4 GUI app with fullscreen and font zoom
+- macOS standalone GUI app with fullscreen and font zoom
 - Cross-platform screensaver support planned (Linux, Windows)
 
 ## Installation
@@ -40,6 +41,7 @@ rsmatrix
 |-----|--------|
 | `q`, `Ctrl+C` | Quit |
 | `c` | Clear screen |
+| `a` | ASCII only |
 | `k` | Katakana only |
 | `b` | Combined (kana + ASCII) |
 | `+` | Increase FPS |
@@ -63,7 +65,10 @@ Run:
 
 ```sh
 cargo run -p rsmatrix-gtk
+cargo run -p rsmatrix-gtk -- --fullscreen
 ```
+
+Options: `-a`/`--ascii`, `-k`/`--kana`, `-f`/`--fullscreen`.
 
 | Key | Action |
 |-----|--------|
@@ -76,13 +81,24 @@ cargo run -p rsmatrix-gtk
 | `Ctrl+=`/`Ctrl+-` | Font zoom in/out |
 | `Ctrl+0` | Reset font size |
 
+## macOS App
+
+Build and run the standalone GUI app:
+
+```sh
+make app
+make run-app
+```
+
+Supports `-a`/`--ascii`, `-k`/`--kana`, `-f`/`--fullscreen` flags. Runtime keys: `a`/`k`/`b` charset, `f` fullscreen, `+`/`-`/`0` font zoom, `c` clear, `q` quit.
+
 ## macOS Screensaver
 
 Build and install the screensaver bundle:
 
 ```sh
 make saver
-make install
+make install-saver
 ```
 
 Then open **System Settings > Screen Saver** to select MatrixSaver. Click **Options…** to configure character set and frame rate.
