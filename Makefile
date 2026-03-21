@@ -70,6 +70,9 @@ run-app: app
 	open $(BUILD_DIR)/Matrix.app
 
 install-saver: saver
+	killall legacyScreenSaver 2>/dev/null || true
+	killall "System Settings" 2>/dev/null || true
+	rm -rf ~/Library/Screen\ Savers/MatrixSaver.saver
 	cp -R $(SAVER_DIR) ~/Library/Screen\ Savers/
 	@echo "Installed MatrixSaver.saver to ~/Library/Screen Savers/"
 	@echo "Open System Settings > Screen Saver to select it."

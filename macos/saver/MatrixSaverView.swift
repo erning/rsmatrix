@@ -85,9 +85,13 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         let view = MTKView(frame: bounds, device: device)
         view.colorPixelFormat = .bgra8Unorm
         view.clearColor = MTLClearColorMake(0, 0, 0, 1)
+        view.isPaused = true
+        view.enableSetNeedsDisplay = false
         view.autoresizingMask = [.width, .height]
         view.layer?.isOpaque = true
         view.delegate = self
+        addSubview(view)
+        mtkView = view
 
         // Adapt frame rate to display refresh rate
         let screen = window?.screen ?? NSScreen.main
@@ -104,12 +108,7 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
                 if fps <= 0 { fps = 60 }
             }
         }
-        view.preferredFramesPerSecond = fps
-        view.isPaused = false
-        view.enableSetNeedsDisplay = false
-
-        addSubview(view)
-        mtkView = view
+        animationTimeInterval = 1.0 / Double(fps)
 
         recalculateGrid()
         lastFrameTime = CACurrentMediaTime()
@@ -129,16 +128,6 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
     }
 
     override func animateOneFrame() {
-        // No-op: MTKView drives the render loop at display refresh rate
-    }
-
-    // MARK: - MTKViewDelegate
-
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
-        metalRenderer?.resizeOffscreenTextures(width: Int(size.width), height: Int(size.height))
-    }
-
-    func draw(in view: MTKView) {
         let now = CACurrentMediaTime()
         let delta = now - lastFrameTime
         lastFrameTime = now
@@ -155,7 +144,17 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
             width: rsmatrix_grid_width(sim),
             height: rsmatrix_grid_height(sim)
         )
-        renderer.render(in: view)
+        mtkView?.draw()
+    }
+
+    // MARK: - MTKViewDelegate
+
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+        metalRenderer?.resizeOffscreenTextures(width: Int(size.width), height: Int(size.height))
+    }
+
+    func draw(in view: MTKView) {
+        metalRenderer?.render(in: view)
     }
 
     // MARK: - Resize
