@@ -1,5 +1,6 @@
 import MetalKit
 import QuartzCore
+import CoreImage
 
 enum RendererMode {
     case metal
@@ -337,17 +338,99 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
 
     @objc func toggleBackgroundBlur(_ sender: Any?) {
         metalRenderer.backgroundBlurEnabled.toggle()
+        if isInFullscreen {
+            if metalRenderer.backgroundBlurEnabled {
+                captureAndBlurDesktop()
+            } else {
+                metalRenderer.backgroundTexture = nil
+            }
+        }
         applyBlurVisualState()
     }
 
     @objc private func didEnterFullscreen(_ notification: Notification) {
         isInFullscreen = true
         applyBlurVisualState()
+        if metalRenderer.backgroundBlurEnabled {
+            captureAndBlurDesktop()
+        }
     }
 
     @objc private func didExitFullscreen(_ notification: Notification) {
         isInFullscreen = false
+        metalRenderer.backgroundTexture = nil
         applyBlurVisualState()
+    }
+
+    // MARK: - Wallpaper capture
+
+    private func captureAndBlurDesktop() {
+        guard let device = self.device else { return }
+        guard let screen = window?.screen ?? NSScreen.main,
+              let wallpaperURL = NSWorkspace.shared.desktopImageURL(for: screen),
+              let nsImage = NSImage(contentsOf: wallpaperURL)
+        else { return }
+
+        // Render wallpaper into a bitmap at screen resolution (aspect-fill)
+        let screenSize = screen.frame.size
+        let scale = screen.backingScaleFactor
+        let pixW = Int(screenSize.width * scale)
+        let pixH = Int(screenSize.height * scale)
+
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let drawCtx = CGContext(
+            data: nil, width: pixW, height: pixH,
+            bitsPerComponent: 8, bytesPerRow: pixW * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return }
+        drawCtx.interpolationQuality = .high
+
+        // Aspect-fill: scale to cover entire screen
+        let imgW = nsImage.size.width
+        let imgH = nsImage.size.height
+        let fillScale = max(screenSize.width / imgW, screenSize.height / imgH)
+        let drawW = imgW * fillScale * scale
+        let drawH = imgH * fillScale * scale
+        let drawX = (CGFloat(pixW) - drawW) / 2
+        let drawY = (CGFloat(pixH) - drawH) / 2
+        let drawRect = CGRect(x: drawX, y: drawY, width: drawW, height: drawH)
+
+        var imgRect = CGRect(x: 0, y: 0, width: nsImage.size.width, height: nsImage.size.height)
+        guard let cgImage = nsImage.cgImage(forProposedRect: &imgRect, context: nil, hints: nil) else { return }
+        drawCtx.draw(cgImage, in: drawRect)
+        guard let scaledCG = drawCtx.makeImage() else { return }
+
+        // Blur with CIFilter
+        let ciImage = CIImage(cgImage: scaledCG)
+        let blurred = ciImage.applyingGaussianBlur(sigma: 30)
+        let ciContext = CIContext()
+        guard let blurredCG = ciContext.createCGImage(blurred, from: ciImage.extent) else { return }
+
+        // Upload to Metal texture
+        let texW = blurredCG.width
+        let texH = blurredCG.height
+        let texDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm, width: texW, height: texH, mipmapped: false)
+        texDesc.storageMode = .shared
+        texDesc.usage = .shaderRead
+        guard let texture = device.makeTexture(descriptor: texDesc) else { return }
+
+        guard let uploadCtx = CGContext(
+            data: nil, width: texW, height: texH,
+            bitsPerComponent: 8, bytesPerRow: texW * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return }
+        uploadCtx.draw(blurredCG, in: CGRect(x: 0, y: 0, width: texW, height: texH))
+
+        if let data = uploadCtx.data {
+            texture.replace(
+                region: MTLRegionMake2D(0, 0, texW, texH),
+                mipmapLevel: 0, withBytes: data, bytesPerRow: texW * 4)
+        }
+
+        metalRenderer.backgroundTexture = texture
     }
 
     private func applyBlurVisualState() {
