@@ -67,10 +67,12 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
 
         let fontSize = CGFloat(max(defs.integer(forKey: prefFontSize), 10))
         let saverBundle = Bundle(for: MatrixSaverView.self)
+        let screen = window?.screen ?? NSScreen.main
         let renderer = MetalRenderer(
             device: device,
             fontSize: fontSize,
-            bundle: saverBundle
+            bundle: saverBundle,
+            scaleFactor: screen?.backingScaleFactor
         )
         renderer.bloomEnabled = defs.bool(forKey: prefBloom)
         renderer.crtEnabled = defs.bool(forKey: prefCRT)
@@ -78,7 +80,7 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         metalRenderer = renderer
 
         // Capture and blur desktop for background
-        if !isPreview && defs.bool(forKey: prefBlur) {
+        if defs.bool(forKey: prefBlur) {
             captureAndBlurDesktop(device: device, renderer: renderer)
         }
 

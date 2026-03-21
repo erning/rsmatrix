@@ -32,6 +32,7 @@ saver: $(RUST_LIB) $(SWIFT_FILES) $(BRIDGING_HEADER) $(SAVER_METAL_LIB)
 		-framework MetalKit \
 		-framework CoreText \
 		-framework QuartzCore \
+		-framework CoreImage \
 		-Xlinker -install_name -Xlinker @rpath/MatrixSaver \
 		$(SWIFT_FILES) \
 		-o $(SAVER_DIR)/Contents/MacOS/MatrixSaver
@@ -62,6 +63,7 @@ app: $(RUST_LIB) $(APP_SWIFT_FILES) $(BRIDGING_HEADER) $(METAL_LIB)
 		-framework MetalKit \
 		-framework CoreText \
 		-framework QuartzCore \
+		-framework CoreImage \
 		$(APP_SWIFT_FILES) \
 		-o $(BUILD_DIR)/Matrix.app/Contents/MacOS/MatrixApp
 	codesign --force --sign - $(BUILD_DIR)/Matrix.app

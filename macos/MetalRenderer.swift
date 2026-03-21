@@ -104,7 +104,7 @@ class MetalRenderer {
 
     // MARK: - Init
 
-    init(device: MTLDevice, fontSize: CGFloat = 14, bundle: Bundle? = nil) {
+    init(device: MTLDevice, fontSize: CGFloat = 14, bundle: Bundle? = nil, scaleFactor: CGFloat? = nil) {
         self.device = device
         self.fontSize = fontSize
         self.commandQueue = device.makeCommandQueue()!
@@ -143,7 +143,7 @@ class MetalRenderer {
             vertex: "fullscreen_vertex", fragment: "blit_fragment", format: drawableFormat)
 
         // Build glyph atlas
-        buildAtlas(scaleFactor: NSScreen.main?.backingScaleFactor ?? 2.0)
+        buildAtlas(scaleFactor: scaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0)
     }
 
     // MARK: - Pipeline creation
@@ -189,10 +189,8 @@ class MetalRenderer {
         ctx.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
         ctx.setTextDrawingMode(.fill)
 
-        let descent = CTFontGetDescent(ctFont)
-
         // Glyph cache for font fallback
-        var resolvedGlyphs: [(glyph: CGGlyph, font: CTFont, ascent: CGFloat)] = []
+        var resolvedGlyphs: [(glyph: CGGlyph, font: CTFont, descent: CGFloat)] = []
         for cp in codepoints {
             resolvedGlyphs.append(resolveGlyph(for: cp))
         }
@@ -204,7 +202,7 @@ class MetalRenderer {
             let info = resolvedGlyphs[i]
 
             let baselineX = CGFloat(col) * cellW
-            let baselineY = CGFloat(row) * cellH + descent
+            let baselineY = CGFloat(row) * cellH + info.descent
 
             var glyph = info.glyph
             var position = CGPoint(x: baselineX, y: baselineY)
@@ -239,9 +237,9 @@ class MetalRenderer {
             mipmapLevel: 0, withBytes: imageBytes, bytesPerRow: bytesPerRow)
     }
 
-    private func resolveGlyph(for codepoint: UInt32) -> (glyph: CGGlyph, font: CTFont, ascent: CGFloat) {
+    private func resolveGlyph(for codepoint: UInt32) -> (glyph: CGGlyph, font: CTFont, descent: CGFloat) {
         guard let scalar = Unicode.Scalar(codepoint) else {
-            return (0, ctFont, CTFontGetAscent(ctFont))
+            return (0, ctFont, CTFontGetDescent(ctFont))
         }
 
         var utf16: [UniChar] = []
@@ -250,7 +248,7 @@ class MetalRenderer {
 
         // Try primary font
         if CTFontGetGlyphsForCharacters(ctFont, &utf16, &g, utf16.count) {
-            return (g, ctFont, CTFontGetAscent(ctFont))
+            return (g, ctFont, CTFontGetDescent(ctFont))
         }
 
         // Fallback
@@ -258,7 +256,7 @@ class MetalRenderer {
         let range = CFRangeMake(0, CFStringGetLength(str))
         let fallback = CTFontCreateForString(ctFont, str, range)
         CTFontGetGlyphsForCharacters(fallback, &utf16, &g, utf16.count)
-        return (g, fallback, CTFontGetAscent(fallback))
+        return (g, fallback, CTFontGetDescent(fallback))
     }
 
     // MARK: - Font size change
