@@ -144,8 +144,8 @@ fn build_ui(app: &gtk4::Application, start_fullscreen: bool) {
         st.last_frame = now;
 
         st.sim.tick(delta_ms);
-        let grid = st.sim.grid();
-        st.renderer.render(cr, grid, grid_w, grid_h);
+        let AppState { ref sim, ref mut renderer, .. } = *st;
+        renderer.render(cr, sim.grid(), grid_w, grid_h);
     });
 
     // Frame clock: use tick callback for vsync-driven animation

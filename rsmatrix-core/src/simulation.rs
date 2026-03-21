@@ -1,6 +1,16 @@
 use crate::charset::random_char;
 use rand::RngExt;
 
+const MAX_GRID_CELLS: usize = 16_000_000;
+
+fn checked_grid_size(width: u32, height: u32) -> usize {
+    let size = (width as usize)
+        .checked_mul(height as usize)
+        .expect("grid dimensions overflow");
+    assert!(size <= MAX_GRID_CELLS, "grid too large: {size} cells");
+    size
+}
+
 /// RGB color constants matching the terminal version.
 const COLOR_GREEN: (u8, u8, u8) = (0, 0xAA, 0);
 const COLOR_LIME: (u8, u8, u8) = (0x55, 0xFF, 0x55);
@@ -65,6 +75,7 @@ pub struct Simulation {
 impl Simulation {
     /// Create a new simulation with the given grid dimensions.
     pub fn new(width: u32, height: u32) -> Self {
+        let grid_size = checked_grid_size(width, height);
         let mut rng = rand::rng();
         let mut columns = Vec::with_capacity(width as usize);
 
@@ -78,7 +89,6 @@ impl Simulation {
             });
         }
 
-        let grid_size = (width as usize) * (height as usize);
         Simulation {
             width,
             height,
@@ -227,7 +237,7 @@ impl Simulation {
         self.width = width;
         self.height = height;
 
-        let grid_size = (width as usize) * (height as usize);
+        let grid_size = checked_grid_size(width, height);
         self.grid = vec![Cell::blank(); grid_size];
 
         let mut rng = rand::rng();

@@ -136,6 +136,9 @@ fn main() {
                             event::KeyCode::Char('k') => {
                                 charset::set_charset(charset::CHARSET_KANA);
                             }
+                            event::KeyCode::Char('a') => {
+                                charset::set_charset(charset::CHARSET_ASCII);
+                            }
                             event::KeyCode::Char('b') => {
                                 charset::set_charset(charset::CHARSET_COMBINED);
                             }

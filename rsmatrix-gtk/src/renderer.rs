@@ -3,10 +3,18 @@ use gtk4::cairo;
 use pangocairo::functions as pc;
 use rsmatrix_core::simulation::Cell;
 
+const COLOR_SLOTS: [(u8, u8, u8); 4] = [
+    (255, 255, 255), // white
+    (170, 170, 170), // silver
+    (85, 255, 85),   // lime
+    (0, 170, 0),     // green
+];
+
 pub struct Renderer {
     font_desc: pango::FontDescription,
     pub cell_width: f64,
     pub cell_height: f64,
+    color_slots: [Vec<(u32, u32, char)>; 4],
 }
 
 impl Renderer {
@@ -18,6 +26,7 @@ impl Renderer {
             font_desc,
             cell_width: 0.0,
             cell_height: 0.0,
+            color_slots: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
         };
         renderer.measure_cell();
         renderer
@@ -46,7 +55,7 @@ impl Renderer {
         self.cell_height = log_h.max(ink_rect.height()).max(10) as f64;
     }
 
-    pub fn render(&self, cr: &cairo::Context, grid: &[Cell], grid_w: u32, grid_h: u32) {
+    pub fn render(&mut self, cr: &cairo::Context, grid: &[Cell], grid_w: u32, grid_h: u32) {
         // Clear to black
         cr.set_source_rgb(0.0, 0.0, 0.0);
         let _ = cr.paint();
@@ -54,16 +63,10 @@ impl Renderer {
         let layout = pc::create_layout(cr);
         layout.set_font_description(Some(&self.font_desc));
 
-        // Bucket cells by color to minimize set_source_rgb calls
-        // Colors: white (255,255,255), silver (170,170,170), lime (85,255,85), green (0,170,0)
-        struct ColorBucket {
-            r: f64,
-            g: f64,
-            b: f64,
-            cells: Vec<(u32, u32, char)>, // col, row, character
+        // Clear slots (preserves capacity)
+        for slot in &mut self.color_slots {
+            slot.clear();
         }
-
-        let mut buckets: Vec<ColorBucket> = Vec::with_capacity(4);
 
         for row in 0..grid_h {
             for col in 0..grid_w {
@@ -75,31 +78,26 @@ impl Renderer {
                     Some(c) => c,
                     None => continue,
                 };
-                let r = cell.r as f64 / 255.0;
-                let g = cell.g as f64 / 255.0;
-                let b = cell.b as f64 / 255.0;
 
-                // Find or create bucket
-                let bucket = buckets.iter_mut().find(|bkt| {
-                    (bkt.r - r).abs() < 0.01 && (bkt.g - g).abs() < 0.01 && (bkt.b - b).abs() < 0.01
-                });
-                if let Some(bucket) = bucket {
-                    bucket.cells.push((col, row, ch));
-                } else {
-                    buckets.push(ColorBucket {
-                        r,
-                        g,
-                        b,
-                        cells: vec![(col, row, ch)],
-                    });
-                }
+                let slot_idx = match (cell.r, cell.g, cell.b) {
+                    (255, 255, 255) => 0,
+                    (170, 170, 170) => 1,
+                    (85, 255, 85) => 2,
+                    (0, 170, 0) => 3,
+                    _ => continue,
+                };
+                self.color_slots[slot_idx].push((col, row, ch));
             }
         }
 
         let mut buf = [0u8; 4];
-        for bucket in &buckets {
-            cr.set_source_rgb(bucket.r, bucket.g, bucket.b);
-            for &(col, row, ch) in &bucket.cells {
+        for (i, slot) in self.color_slots.iter().enumerate() {
+            if slot.is_empty() {
+                continue;
+            }
+            let (r, g, b) = COLOR_SLOTS[i];
+            cr.set_source_rgb(r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0);
+            for &(col, row, ch) in slot {
                 cr.move_to(col as f64 * self.cell_width, row as f64 * self.cell_height);
                 layout.set_text(ch.encode_utf8(&mut buf));
                 pc::show_layout(cr, &layout);
