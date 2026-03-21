@@ -9,6 +9,7 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
     private var gridHeight: UInt32 = 0
     private var fontSize: CGFloat = 14
     private var currentCharset: UInt32 = 0
+    private var isInFullscreen = false
 
     /// Set by AppDelegate for background blur toggle
     var backgroundEffectView: NSVisualEffectView?
@@ -83,6 +84,12 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
             NotificationCenter.default.addObserver(
                 self, selector: #selector(screenDidChange),
                 name: NSWindow.didChangeScreenNotification, object: window)
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(didEnterFullscreen),
+                name: NSWindow.didEnterFullScreenNotification, object: window)
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(didExitFullscreen),
+                name: NSWindow.didExitFullScreenNotification, object: window)
         } else {
             NotificationCenter.default.removeObserver(
                 self, name: NSWindow.didChangeScreenNotification, object: nil)
@@ -225,14 +232,30 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
 
     @objc func toggleBackgroundBlur(_ sender: Any?) {
         metalRenderer.backgroundBlurEnabled.toggle()
-        let enabled = metalRenderer.backgroundBlurEnabled
+        applyBlurVisualState()
+    }
 
-        backgroundEffectView?.isHidden = !enabled
-        layer?.isOpaque = !enabled
+    @objc private func didEnterFullscreen(_ notification: Notification) {
+        isInFullscreen = true
+        applyBlurVisualState()
+    }
+
+    @objc private func didExitFullscreen(_ notification: Notification) {
+        isInFullscreen = false
+        applyBlurVisualState()
+    }
+
+    private func applyBlurVisualState() {
+        let active = metalRenderer.backgroundBlurEnabled && !isInFullscreen
+        metalRenderer.isFullscreen = isInFullscreen
+
+        backgroundEffectView?.isHidden = !active
+        layer?.isOpaque = !active
+        layer?.backgroundColor = active ? CGColor.clear : NSColor.black.cgColor
 
         if let window = window {
-            window.isOpaque = !enabled
-            window.backgroundColor = enabled ? .clear : .black
+            window.isOpaque = !active
+            window.backgroundColor = active ? .clear : .black
         }
     }
 }

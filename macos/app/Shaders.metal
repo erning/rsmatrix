@@ -23,6 +23,7 @@ struct CompositeUniforms {
     float distortionStrength;
     float vignetteStrength;
     float viewHeightPixels;
+    float backgroundAlpha;
 };
 
 // ============================================================
@@ -194,6 +195,6 @@ fragment float4 composite_fragment(
         color.rgb *= clamp(1.0 - uniforms.vignetteStrength * dot(vigUV, vigUV), 0.0f, 1.0f);
     }
 
-    color.a = alpha;
+    color.a = max(alpha, uniforms.backgroundAlpha);
     return color;
 }

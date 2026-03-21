@@ -17,6 +17,7 @@ struct CompositeUniforms {
     var distortionStrength: Float
     var vignetteStrength: Float
     var viewHeightPixels: Float
+    var backgroundAlpha: Float
 }
 
 struct CellInstance {
@@ -84,6 +85,7 @@ class MetalRenderer {
     var bloomEnabled = true
     var crtEnabled = true
     var backgroundBlurEnabled = false
+    var isFullscreen = false
     var phosphorDecay: Float = 0.92
     var bloomThreshold: Float = 0.4
     var bloomIntensityValue: Float = 0.5
@@ -365,9 +367,9 @@ class MetalRenderer {
               let bloomTmp = bloomTempTexture
         else { return }
 
-        view.clearColor = backgroundBlurEnabled
-            ? MTLClearColorMake(0, 0, 0, 0)
-            : MTLClearColorMake(0, 0, 0, 1)
+        let blurActive = backgroundBlurEnabled && !isFullscreen
+        let bgAlpha = blurActive ? 0.75 : 1.0
+        view.clearColor = MTLClearColorMake(0, 0, 0, bgAlpha)
 
         guard let compositeRPD = view.currentRenderPassDescriptor,
               let drawable = view.currentDrawable,
@@ -548,12 +550,14 @@ class MetalRenderer {
         enc.setFragmentTexture(scene, index: 0)
         enc.setFragmentTexture(bloom, index: 1)
 
+        let blurActive = backgroundBlurEnabled && !isFullscreen
         var uniforms = CompositeUniforms(
             bloomIntensity: bloomEnabled ? bloomIntensityValue : 0,
             scanlineIntensity: crtEnabled ? scanlineIntensity : 0,
             distortionStrength: crtEnabled ? distortionStrength : 0,
             vignetteStrength: crtEnabled ? vignetteStrength : 0,
-            viewHeightPixels: Float(drawableSize.height)
+            viewHeightPixels: Float(drawableSize.height),
+            backgroundAlpha: blurActive ? 0.75 : 1.0
         )
         enc.setFragmentBytes(&uniforms, length: MemoryLayout<CompositeUniforms>.size, index: 0)
 
