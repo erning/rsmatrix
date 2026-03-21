@@ -99,7 +99,7 @@ class MetalRenderer {
 
     // MARK: - Init
 
-    init(device: MTLDevice, fontSize: CGFloat = 14) {
+    init(device: MTLDevice, fontSize: CGFloat = 14, bundle: Bundle? = nil) {
         self.device = device
         self.fontSize = fontSize
         self.commandQueue = device.makeCommandQueue()!
@@ -113,8 +113,12 @@ class MetalRenderer {
         self.cellSize = CGSize(width: ceil(size.width), height: ceil(size.height))
 
         // Compile shaders
-        guard let library = device.makeDefaultLibrary() else {
-            fatalError("Failed to load Metal shader library")
+        let library: MTLLibrary
+        if let bundle = bundle,
+           let libURL = bundle.url(forResource: "default", withExtension: "metallib") {
+            library = try! device.makeLibrary(URL: libURL)
+        } else {
+            library = device.makeDefaultLibrary()!
         }
 
         // Pipeline states

@@ -1,25 +1,25 @@
 import ScreenSaver
+import MetalKit
 
 private let bundleID = "com.rsmatrix.MatrixSaver"
 private let prefCharset = "Charset"   // "combined", "ascii", "kana"
 private let prefFPS     = "FPS"       // Int 1-60
 
 @objc(MatrixSaverView)
-class MatrixSaverView: ScreenSaverView {
+class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
     private var simulation: OpaquePointer?
     private var lastFrameTime: TimeInterval = 0
     private var gridWidth: UInt32 = 0
     private var gridHeight: UInt32 = 0
 
-    private var coreTextRenderer: MatrixRenderer?
+    private var mtkView: MTKView?
+    private var metalRenderer: MetalRenderer?
 
     // Configure sheet
     private var configSheet: NSWindow?
     private var charsetPopup: NSPopUpButton?
     private var fpsSlider: NSSlider?
     private var fpsLabel: NSTextField?
-
-    override var isFlipped: Bool { true }
 
     private var defaults: ScreenSaverDefaults {
         ScreenSaverDefaults(forModuleWithName: bundleID)!
@@ -58,14 +58,38 @@ class MatrixSaverView: ScreenSaverView {
         let fps = defaults.integer(forKey: prefFPS)
         animationTimeInterval = 1.0 / Double(max(fps, 1))
 
-        coreTextRenderer = MatrixRenderer(fontSize: isPreview ? 6 : 14)
+        guard let device = MTLCreateSystemDefaultDevice() else { return }
+
+        let saverBundle = Bundle(for: MatrixSaverView.self)
+        let renderer = MetalRenderer(
+            device: device,
+            fontSize: isPreview ? 6 : 14,
+            bundle: saverBundle
+        )
+        renderer.backgroundBlurEnabled = false
+        renderer.isFullscreen = true
+        metalRenderer = renderer
+
+        let view = MTKView(frame: bounds, device: device)
+        view.colorPixelFormat = .bgra8Unorm
+        view.clearColor = MTLClearColorMake(0, 0, 0, 1)
+        view.isPaused = true
+        view.enableSetNeedsDisplay = false
+        view.autoresizingMask = [.width, .height]
+        view.layer?.isOpaque = true
+        view.delegate = self
+        addSubview(view)
+        mtkView = view
+
         recalculateGrid()
         lastFrameTime = CACurrentMediaTime()
     }
 
     override func stopAnimation() {
         super.stopAnimation()
-        coreTextRenderer = nil
+        mtkView?.removeFromSuperview()
+        mtkView = nil
+        metalRenderer = nil
         if let sim = simulation {
             rsmatrix_destroy(sim)
             simulation = nil
@@ -84,23 +108,27 @@ class MatrixSaverView: ScreenSaverView {
             rsmatrix_tick(sim, deltaMs)
         }
 
-        setNeedsDisplay(bounds)
-    }
-
-    override func draw(_ rect: NSRect) {
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
-
-        context.setFillColor(red: 0, green: 0, blue: 0, alpha: 1)
-        context.fill(bounds)
-
-        guard let sim = simulation, let renderer = coreTextRenderer else { return }
+        guard let sim = simulation, let renderer = metalRenderer else { return }
         let grid = rsmatrix_get_grid(sim)
-        renderer.render(
-            context: context, grid: grid,
+        renderer.updateInstances(
+            grid: grid,
             width: rsmatrix_grid_width(sim),
             height: rsmatrix_grid_height(sim)
         )
+        mtkView?.draw()
     }
+
+    // MARK: - MTKViewDelegate
+
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+        metalRenderer?.resizeOffscreenTextures(width: Int(size.width), height: Int(size.height))
+    }
+
+    func draw(in view: MTKView) {
+        metalRenderer?.render(in: view)
+    }
+
+    // MARK: - Resize
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
@@ -241,7 +269,7 @@ class MatrixSaverView: ScreenSaverView {
     // MARK: - Grid
 
     private func recalculateGrid() {
-        guard let renderer = coreTextRenderer else { return }
+        guard let renderer = metalRenderer else { return }
         let cellSize = renderer.cellSize
         let newWidth = max(UInt32(bounds.width / cellSize.width), 1)
         let newHeight = max(UInt32(bounds.height / cellSize.height), 1)
