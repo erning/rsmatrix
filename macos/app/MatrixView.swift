@@ -1,13 +1,14 @@
 import MetalKit
 import QuartzCore
 
-class MatrixView: MTKView, MTKViewDelegate {
+class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
     private(set) var metalRenderer: MetalRenderer
     private var simulation: OpaquePointer?
     private var lastFrameTime: TimeInterval = 0
     private var gridWidth: UInt32 = 0
     private var gridHeight: UInt32 = 0
     private var fontSize: CGFloat = 14
+    private var currentCharset: UInt32 = 0
 
     /// Set by AppDelegate for background blur toggle
     var backgroundEffectView: NSVisualEffectView?
@@ -156,9 +157,31 @@ class MatrixView: MTKView, MTKViewDelegate {
 
     // MARK: - Charset
 
-    @objc func setCharsetCombined(_ sender: Any?) { rsmatrix_set_charset(0) }
-    @objc func setCharsetASCII(_ sender: Any?)    { rsmatrix_set_charset(1) }
-    @objc func setCharsetKana(_ sender: Any?)     { rsmatrix_set_charset(2) }
+    @objc func setCharsetCombined(_ sender: Any?) { currentCharset = 0; rsmatrix_set_charset(0) }
+    @objc func setCharsetASCII(_ sender: Any?)    { currentCharset = 1; rsmatrix_set_charset(1) }
+    @objc func setCharsetKana(_ sender: Any?)     { currentCharset = 2; rsmatrix_set_charset(2) }
+
+    // MARK: - Menu Validation
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(setCharsetCombined):
+            menuItem.state = currentCharset == 0 ? .on : .off
+        case #selector(setCharsetASCII):
+            menuItem.state = currentCharset == 1 ? .on : .off
+        case #selector(setCharsetKana):
+            menuItem.state = currentCharset == 2 ? .on : .off
+        case #selector(toggleBloom):
+            menuItem.state = metalRenderer.bloomEnabled ? .on : .off
+        case #selector(toggleCRT):
+            menuItem.state = metalRenderer.crtEnabled ? .on : .off
+        case #selector(toggleBackgroundBlur):
+            menuItem.state = metalRenderer.backgroundBlurEnabled ? .on : .off
+        default:
+            break
+        }
+        return true
+    }
 
     // MARK: - Zoom
 

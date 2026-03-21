@@ -131,17 +131,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             withTitle: "Combined (Kana + ASCII)",
             action: #selector(MatrixView.setCharsetCombined(_:)),
             keyEquivalent: "b"
-        )
+        ).image = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
         charMenu.addItem(
             withTitle: "ASCII Only",
             action: #selector(MatrixView.setCharsetASCII(_:)),
             keyEquivalent: "a"
-        )
+        ).image = NSImage(systemSymbolName: "textformat.abc", accessibilityDescription: nil)
         charMenu.addItem(
             withTitle: "Katakana Only",
             action: #selector(MatrixView.setCharsetKana(_:)),
             keyEquivalent: "k"
-        )
+        ).image = NSImage(systemSymbolName: "character", accessibilityDescription: nil)
 
         // Effects menu
         let effectsMenuItem = NSMenuItem()
@@ -152,17 +152,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             withTitle: "Toggle Bloom",
             action: #selector(MatrixView.toggleBloom(_:)),
             keyEquivalent: "g"
-        )
+        ).image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
         effectsMenu.addItem(
             withTitle: "Toggle CRT",
             action: #selector(MatrixView.toggleCRT(_:)),
             keyEquivalent: "r"
-        )
+        ).image = NSImage(systemSymbolName: "tv", accessibilityDescription: nil)
         effectsMenu.addItem(
             withTitle: "Toggle Background Blur",
             action: #selector(MatrixView.toggleBackgroundBlur(_:)),
             keyEquivalent: "t"
-        )
+        ).image = NSImage(systemSymbolName: "rectangle.on.rectangle", accessibilityDescription: nil)
 
         NSApplication.shared.mainMenu = mainMenu
     }
