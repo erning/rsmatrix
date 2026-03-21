@@ -107,7 +107,6 @@ Effects are Metal-only. Background blur shows the desktop wallpaper (blurred and
 |-----|--------|
 | `c` | Clear screen |
 | `Escape` | Exit fullscreen |
-| `q` | Quit |
 
 ## macOS Screensaver
 

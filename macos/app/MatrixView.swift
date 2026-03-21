@@ -185,6 +185,9 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
             recalculateGrid()
         }
         lastBackingScale = scale
+        if isInFullscreen && metalRenderer.backgroundBlurEnabled {
+            captureAndBlurDesktop()
+        }
     }
 
     // MARK: - Frame Rate
