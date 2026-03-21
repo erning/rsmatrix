@@ -225,6 +225,8 @@ impl Simulation {
         let mut rng = rand::rng();
         for column in &mut self.columns {
             column.streams.clear();
+            // Minimum must exceed tick()'s delta clamp (1000 ms) so that
+            // at least one blank frame is rendered before any column respawns.
             let delay = rng.random_range(1001..9000);
             column.spawn_state = SpawnState::Delaying {
                 remaining_ms: delay,
