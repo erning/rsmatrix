@@ -59,6 +59,7 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
     override func startAnimation() {
         super.startAnimation()
         guard !isPreview else { return }
+        tearDown()
         applyCharset()
 
         let defs = defaults
@@ -105,6 +106,10 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
 
     override func stopAnimation() {
         super.stopAnimation()
+        tearDown()
+    }
+
+    private func tearDown() {
         mtkView?.removeFromSuperview()
         mtkView = nil
         metalRenderer = nil
