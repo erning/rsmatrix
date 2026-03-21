@@ -168,7 +168,10 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
     // MARK: - Background capture
 
     private func captureAndBlurDesktop(device: MTLDevice, renderer: MetalRenderer) {
-        // Get desktop wallpaper for the screen this saver runs on
+        // Read the wallpaper image file instead of capturing the real desktop.
+        // CGWindowListCreateImage/CGDisplayCreateImage were obsoleted in macOS 15;
+        // the replacement (ScreenCaptureKit) requires Screen Recording permission,
+        // which is not appropriate for a screen saver.
         guard let screen = window?.screen ?? NSScreen.main,
               let wallpaperURL = NSWorkspace.shared.desktopImageURL(for: screen),
               let nsImage = NSImage(contentsOf: wallpaperURL)
