@@ -2,8 +2,11 @@ import AppKit
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
+    private var startFullscreen = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        parseArguments()
+
         let matrixView = MatrixView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
 
         window = NSWindow(
@@ -13,6 +16,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             defer: false
         )
         window.title = "Matrix"
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.titlebarAppearsTransparent = true
         window.contentView = matrixView
         window.contentMinSize = NSSize(
             width: matrixView.renderer.cellSize.width * 20,
@@ -26,10 +31,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeFirstResponder(matrixView)
 
         setupMenu()
+
+        if startFullscreen {
+            window.toggleFullScreen(nil)
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
+    }
+
+    private func parseArguments() {
+        let args = CommandLine.arguments
+        for arg in args.dropFirst() {
+            switch arg {
+            case "--fullscreen", "-f":
+                startFullscreen = true
+            case "--ascii", "-a":
+                rsmatrix_set_charset(1)
+            case "--kana", "-k":
+                rsmatrix_set_charset(2)
+            default:
+                break
+            }
+        }
     }
 
     private func setupMenu() {
@@ -69,6 +94,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             withTitle: "Actual Size",
             action: #selector(MatrixView.zoomReset(_:)),
             keyEquivalent: "0"
+        )
+
+        let charMenuItem = NSMenuItem()
+        mainMenu.addItem(charMenuItem)
+        let charMenu = NSMenu(title: "Characters")
+        charMenuItem.submenu = charMenu
+        charMenu.addItem(
+            withTitle: "Combined (Kana + ASCII)",
+            action: #selector(MatrixView.setCharsetCombined(_:)),
+            keyEquivalent: "b"
+        )
+        charMenu.addItem(
+            withTitle: "ASCII Only",
+            action: #selector(MatrixView.setCharsetASCII(_:)),
+            keyEquivalent: "a"
+        )
+        charMenu.addItem(
+            withTitle: "Katakana Only",
+            action: #selector(MatrixView.setCharsetKana(_:)),
+            keyEquivalent: "k"
         )
 
         NSApplication.shared.mainMenu = mainMenu

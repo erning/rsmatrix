@@ -13,6 +13,10 @@ class MatrixView: NSView {
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
 
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .init(image: NSImage(size: NSSize(width: 1, height: 1)), hotSpot: .zero))
+    }
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
@@ -48,20 +52,13 @@ class MatrixView: NSView {
 
     private func startDisplayLink() {
         guard displayLink == nil else { return }
+        lastFrameTime = CACurrentMediaTime()
         let dl = self.displayLink(target: self, selector: #selector(displayLinkFired(_:)))
         dl.add(to: .main, forMode: .common)
         displayLink = dl
     }
 
     @objc private func displayLinkFired(_ sender: CADisplayLink) {
-        needsDisplay = true
-    }
-
-    // MARK: - Drawing
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
-
         let now = CACurrentMediaTime()
         let delta = now - lastFrameTime
         lastFrameTime = now
@@ -70,6 +67,14 @@ class MatrixView: NSView {
         if let sim = simulation, deltaMs > 0 {
             rsmatrix_tick(sim, deltaMs)
         }
+
+        needsDisplay = true
+    }
+
+    // MARK: - Drawing
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
 
         context.setFillColor(red: 0, green: 0, blue: 0, alpha: 1)
         context.fill(bounds)
@@ -114,16 +119,20 @@ class MatrixView: NSView {
         switch chars {
         case "c":
             if let sim = simulation { rsmatrix_clear(sim) }
-        case "k":
-            rsmatrix_set_charset(2)
-        case "b":
-            rsmatrix_set_charset(0)
-        case "a":
-            rsmatrix_set_charset(1)
+        case "\u{1b}":  // Escape
+            if let w = window, w.styleMask.contains(.fullScreen) {
+                w.toggleFullScreen(nil)
+            }
         default:
             super.keyDown(with: event)
         }
     }
+
+    // MARK: - Charset
+
+    @objc func setCharsetCombined(_ sender: Any?) { rsmatrix_set_charset(0) }
+    @objc func setCharsetASCII(_ sender: Any?)    { rsmatrix_set_charset(1) }
+    @objc func setCharsetKana(_ sender: Any?)     { rsmatrix_set_charset(2) }
 
     // MARK: - Zoom
 
@@ -145,5 +154,9 @@ class MatrixView: NSView {
     private func rebuildRenderer() {
         renderer = MatrixRenderer(fontSize: fontSize)
         recalculateGrid()
+        window?.contentMinSize = NSSize(
+            width: renderer.cellSize.width * 20,
+            height: renderer.cellSize.height * 10
+        )
     }
 }

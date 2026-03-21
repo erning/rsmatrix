@@ -19,16 +19,25 @@ class MatrixRenderer {
         let ascent: CGFloat
     }
 
-    // Per-(font, color) draw buffers, keyed by font pointer identity
-    // Inner arrays: [color_index] → (glyphs, points)
-    private var drawBatches: [FontKey: [[CGGlyph]]] = [:]
-    private var pointBatches: [FontKey: [[CGPoint]]] = [:]
+    // Per-(font, color) draw buffers
+    private struct BatchKey: Hashable {
+        let fontPtr: UnsafeRawPointer
+        let r: UInt8
+        let g: UInt8
+        let b: UInt8
+    }
+
+    private var glyphBatches: [BatchKey: [CGGlyph]] = [:]
+    private var pointBatches: [BatchKey: [CGPoint]] = [:]
 
     // Use ObjectIdentifier-like key for CTFont
     private struct FontKey: Hashable {
         let ptr: UnsafeRawPointer
         init(_ font: CTFont) {
             ptr = UnsafeRawPointer(Unmanaged.passUnretained(font as AnyObject).toOpaque())
+        }
+        init(ptr: UnsafeRawPointer) {
+            self.ptr = ptr
         }
     }
 
@@ -55,28 +64,32 @@ class MatrixRenderer {
             return cached
         }
 
-        var unichar = UniChar(codepoint)
+        guard let scalar = Unicode.Scalar(codepoint) else {
+            let cached = CachedGlyph(glyph: 0, font: ctFont, ascent: ascent)
+            glyphCache[codepoint] = cached
+            return cached
+        }
+
+        // Encode as UTF-16 (handles surrogate pairs for codepoints > U+FFFF)
+        var utf16: [UniChar] = []
+        UTF16.encode(scalar, into: { utf16.append($0) })
+
         var g = CGGlyph(0)
 
         // Try primary font first
-        if CTFontGetGlyphsForCharacters(ctFont, &unichar, &g, 1) {
+        if CTFontGetGlyphsForCharacters(ctFont, &utf16, &g, utf16.count) {
             let cached = CachedGlyph(glyph: g, font: ctFont, ascent: ascent)
             glyphCache[codepoint] = cached
             return cached
         }
 
         // Font fallback: find a font that has this character
-        guard let scalar = Unicode.Scalar(codepoint) else {
-            let cached = CachedGlyph(glyph: 0, font: ctFont, ascent: ascent)
-            glyphCache[codepoint] = cached
-            return cached
-        }
         let str = String(Character(scalar)) as CFString
-        let range = CFRangeMake(0, 1)
+        let range = CFRangeMake(0, CFStringGetLength(str))
         let fallbackFont = CTFontCreateForString(ctFont, str, range)
         let fallbackAscent = CTFontGetAscent(fallbackFont)
 
-        CTFontGetGlyphsForCharacters(fallbackFont, &unichar, &g, 1)
+        CTFontGetGlyphsForCharacters(fallbackFont, &utf16, &g, utf16.count)
 
         let key = FontKey(fallbackFont)
         knownFonts[key] = (fallbackFont, fallbackAscent)
@@ -93,11 +106,9 @@ class MatrixRenderer {
         height: UInt32
     ) {
         // Reset batches
-        for key in drawBatches.keys {
-            for i in 0..<4 {
-                drawBatches[key]![i].removeAll(keepingCapacity: true)
-                pointBatches[key]![i].removeAll(keepingCapacity: true)
-            }
+        for key in glyphBatches.keys {
+            glyphBatches[key]!.removeAll(keepingCapacity: true)
+            pointBatches[key]!.removeAll(keepingCapacity: true)
         }
 
         // Collect glyphs into (font, color) buckets
@@ -111,57 +122,45 @@ class MatrixRenderer {
                     continue
                 }
 
-                let colorIdx: Int
-                switch (cell.r, cell.g, cell.b) {
-                case (0, 0xAA, 0):       colorIdx = 0
-                case (0x55, 0xFF, 0x55): colorIdx = 1
-                case (0xAA, 0xAA, 0xAA): colorIdx = 2
-                case (0xFF, 0xFF, 0xFF): colorIdx = 3
-                default: continue
-                }
-
                 let info = resolveGlyph(for: cell.codepoint)
-                let key = FontKey(info.font)
+                let fontPtr = UnsafeRawPointer(
+                    Unmanaged.passUnretained(info.font as AnyObject).toOpaque()
+                )
+                let batchKey = BatchKey(fontPtr: fontPtr, r: cell.r, g: cell.g, b: cell.b)
 
-                // Ensure batch arrays exist for this font
-                if drawBatches[key] == nil {
-                    drawBatches[key] = [[], [], [], []]
-                    pointBatches[key] = [[], [], [], []]
+                if glyphBatches[batchKey] == nil {
+                    glyphBatches[batchKey] = []
+                    pointBatches[batchKey] = []
                 }
 
                 let x = CGFloat(col) * cellSize.width
                 let y = totalHeight - CGFloat(row + 1) * cellSize.height + info.ascent
 
-                drawBatches[key]![colorIdx].append(info.glyph)
-                pointBatches[key]![colorIdx].append(CGPoint(x: x, y: y))
+                glyphBatches[batchKey]!.append(info.glyph)
+                pointBatches[batchKey]!.append(CGPoint(x: x, y: y))
             }
         }
 
         // Draw all batches
-        let colors: [(CGFloat, CGFloat, CGFloat)] = [
-            (0, 170.0/255.0, 0),             // green
-            (85.0/255.0, 1, 85.0/255.0),     // lime
-            (170.0/255.0, 170.0/255.0, 170.0/255.0), // silver
-            (1, 1, 1),                         // white
-        ]
-
         context.saveGState()
         context.translateBy(x: 0, y: totalHeight)
         context.scaleBy(x: 1, y: -1)
         context.setTextDrawingMode(.fill)
 
-        for (key, fontInfo) in knownFonts {
-            guard let glyphArrays = drawBatches[key],
-                  let pointArrays = pointBatches[key] else { continue }
+        for (batchKey, glyphs) in glyphBatches {
+            if glyphs.isEmpty { continue }
 
-            for colorIdx in 0..<4 {
-                let glyphs = glyphArrays[colorIdx]
-                if glyphs.isEmpty { continue }
+            // Look up the font for this batch
+            let fontKey = FontKey(ptr: batchKey.fontPtr)
+            guard let fontInfo = knownFonts[fontKey] else { continue }
 
-                let (r, g, b) = colors[colorIdx]
-                context.setFillColor(red: r, green: g, blue: b, alpha: 1)
-                CTFontDrawGlyphs(fontInfo.font, glyphs, pointArrays[colorIdx], glyphs.count, context)
-            }
+            context.setFillColor(
+                red: CGFloat(batchKey.r) / 255.0,
+                green: CGFloat(batchKey.g) / 255.0,
+                blue: CGFloat(batchKey.b) / 255.0,
+                alpha: 1
+            )
+            CTFontDrawGlyphs(fontInfo.font, glyphs, pointBatches[batchKey]!, glyphs.count, context)
         }
 
         context.restoreGState()
