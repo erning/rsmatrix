@@ -26,9 +26,7 @@ class MatrixView: MTKView, MTKViewDelegate {
 
         colorPixelFormat = .bgra8Unorm
         clearColor = MTLClearColorMake(0, 0, 0, 1)
-        preferredFramesPerSecond = 60
-        isPaused = false
-        enableSetNeedsDisplay = false
+        updatePreferredFrameRate()
         delegate = self
 
         wantsLayer = true
@@ -78,9 +76,42 @@ class MatrixView: MTKView, MTKViewDelegate {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if window != nil {
+        if let window = window {
             lastFrameTime = CACurrentMediaTime()
+            updatePreferredFrameRate()
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(screenDidChange),
+                name: NSWindow.didChangeScreenNotification, object: window)
+        } else {
+            NotificationCenter.default.removeObserver(
+                self, name: NSWindow.didChangeScreenNotification, object: nil)
         }
+    }
+
+    @objc private func screenDidChange(_ notification: Notification) {
+        updatePreferredFrameRate()
+    }
+
+    // MARK: - Frame Rate
+
+    private func updatePreferredFrameRate() {
+        let screen = window?.screen ?? NSScreen.main
+        var fps = 60
+        if let screen = screen {
+            let screenNumber = screen.deviceDescription[
+                NSDeviceDescriptionKey("NSScreenNumber")]
+            if let displayID = screenNumber as? CGDirectDisplayID,
+               let mode = CGDisplayCopyDisplayMode(displayID),
+               mode.refreshRate > 0 {
+                fps = Int(mode.refreshRate)
+            } else {
+                fps = screen.maximumFramesPerSecond
+                if fps <= 0 { fps = 60 }
+            }
+        }
+        preferredFramesPerSecond = fps
+        isPaused = false
+        enableSetNeedsDisplay = false
     }
 
     // MARK: - Resize
