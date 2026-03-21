@@ -18,6 +18,7 @@ struct CompositeUniforms {
     var vignetteStrength: Float
     var viewHeightPixels: Float
     var backgroundAlpha: Float
+    var hasBackground: Float
 }
 
 struct CellInstance {
@@ -90,6 +91,7 @@ class MetalRenderer {
     var crtEnabled = true
     var backgroundBlurEnabled = true
     var isFullscreen = false
+    var backgroundTexture: MTLTexture?
     var phosphorDecay: Float = 0.92
     var bloomThreshold: Float = 0.4
     var bloomIntensityValue: Float = 0.5
@@ -559,6 +561,7 @@ class MetalRenderer {
 
         enc.setFragmentTexture(scene, index: 0)
         enc.setFragmentTexture(bloom, index: 1)
+        enc.setFragmentTexture(backgroundTexture ?? scene, index: 2)
 
         let blurActive = backgroundBlurEnabled && !isFullscreen
         var uniforms = CompositeUniforms(
@@ -567,7 +570,8 @@ class MetalRenderer {
             distortionStrength: crtEnabled ? distortionStrength : 0,
             vignetteStrength: crtEnabled ? vignetteStrength : 0,
             viewHeightPixels: Float(drawableSize.height),
-            backgroundAlpha: blurActive ? 0.75 : 1.0
+            backgroundAlpha: blurActive ? 0.75 : 1.0,
+            hasBackground: backgroundTexture != nil ? 1.0 : 0.0
         )
         enc.setFragmentBytes(&uniforms, length: MemoryLayout<CompositeUniforms>.size, index: 0)
 

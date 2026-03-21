@@ -24,6 +24,7 @@ struct CompositeUniforms {
     float vignetteStrength;
     float viewHeightPixels;
     float backgroundAlpha;
+    float hasBackground;
 };
 
 // ============================================================
@@ -160,6 +161,7 @@ fragment float4 composite_fragment(
     FullscreenOut in [[stage_in]],
     texture2d<float> scene [[texture(0)]],
     texture2d<float> bloom [[texture(1)]],
+    texture2d<float> background [[texture(2)]],
     constant CompositeUniforms &uniforms [[buffer(0)]]
 ) {
     constexpr sampler s(filter::linear, address::clamp_to_edge);
@@ -195,7 +197,14 @@ fragment float4 composite_fragment(
         color.rgb *= clamp(1.0 - uniforms.vignetteStrength * dot(vigUV, vigUV), 0.0f, 1.0f);
     }
 
-    color.a = max(alpha, uniforms.backgroundAlpha);
+    // Background compositing
+    if (uniforms.hasBackground > 0.5) {
+        float4 bg = background.sample(s, uv);
+        bg.rgb *= 0.4;
+        color = float4(bg.rgb * (1.0 - color.a) + color.rgb, 1.0);
+    } else {
+        color.a = max(alpha, uniforms.backgroundAlpha);
+    }
     return color;
 }
 

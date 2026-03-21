@@ -1,9 +1,14 @@
 import ScreenSaver
 import MetalKit
+import CoreImage
 
 private let bundleID = "com.rsmatrix.MatrixSaver"
-private let prefCharset = "Charset"   // "combined", "ascii", "kana"
-private let prefFPS     = "FPS"       // Int 1-60
+private let prefCharset  = "Charset"         // "combined", "ascii", "kana"
+private let prefFPS      = "FPS"             // Int 1-60
+private let prefFontSize = "FontSize"        // Int (10,12,14,16,18,20,24)
+private let prefBloom    = "Bloom"           // Bool
+private let prefCRT      = "CRT"             // Bool
+private let prefBlur     = "BackgroundBlur"  // Bool
 
 @objc(MatrixSaverView)
 class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
@@ -18,8 +23,12 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
     // Configure sheet
     private var configSheet: NSWindow?
     private var charsetPopup: NSPopUpButton?
+    private var fontSizePopup: NSPopUpButton?
     private var fpsSlider: NSSlider?
     private var fpsLabel: NSTextField?
+    private var bloomCheck: NSButton?
+    private var crtCheck: NSButton?
+    private var blurCheck: NSButton?
 
     private var defaults: ScreenSaverDefaults {
         ScreenSaverDefaults(forModuleWithName: bundleID)!
@@ -32,6 +41,10 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         defs.register(defaults: [
             prefCharset: "combined",
             prefFPS: 30,
+            prefFontSize: 14,
+            prefBloom: true,
+            prefCRT: true,
+            prefBlur: true,
         ])
 
         let fps = defs.integer(forKey: prefFPS)
@@ -55,20 +68,28 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         super.startAnimation()
         applyCharset()
 
-        let fps = defaults.integer(forKey: prefFPS)
+        let defs = defaults
+        let fps = defs.integer(forKey: prefFPS)
         animationTimeInterval = 1.0 / Double(max(fps, 1))
 
         guard let device = MTLCreateSystemDefaultDevice() else { return }
 
+        let fontSize: CGFloat = isPreview ? 6 : CGFloat(max(defs.integer(forKey: prefFontSize), 10))
         let saverBundle = Bundle(for: MatrixSaverView.self)
         let renderer = MetalRenderer(
             device: device,
-            fontSize: isPreview ? 6 : 14,
+            fontSize: fontSize,
             bundle: saverBundle
         )
-        renderer.backgroundBlurEnabled = false
+        renderer.bloomEnabled = defs.bool(forKey: prefBloom)
+        renderer.crtEnabled = defs.bool(forKey: prefCRT)
         renderer.isFullscreen = true
         metalRenderer = renderer
+
+        // Capture and blur desktop for background
+        if !isPreview && defs.bool(forKey: prefBlur) {
+            captureAndBlurDesktop(device: device, renderer: renderer)
+        }
 
         let view = MTKView(frame: bounds, device: device)
         view.colorPixelFormat = .bgra8Unorm
@@ -135,6 +156,77 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         recalculateGrid()
     }
 
+    // MARK: - Background capture
+
+    private func captureAndBlurDesktop(device: MTLDevice, renderer: MetalRenderer) {
+        // Get desktop wallpaper for the screen this saver runs on
+        guard let screen = window?.screen ?? NSScreen.main,
+              let wallpaperURL = NSWorkspace.shared.desktopImageURL(for: screen),
+              let nsImage = NSImage(contentsOf: wallpaperURL)
+        else { return }
+
+        // Render wallpaper into a bitmap at screen resolution (aspect-fill)
+        let screenSize = screen.frame.size
+        let scale = screen.backingScaleFactor
+        let pixW = Int(screenSize.width * scale)
+        let pixH = Int(screenSize.height * scale)
+
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let drawCtx = CGContext(
+            data: nil, width: pixW, height: pixH,
+            bitsPerComponent: 8, bytesPerRow: pixW * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return }
+        drawCtx.interpolationQuality = .high
+
+        // Aspect-fill: scale to cover entire screen
+        let imgW = nsImage.size.width
+        let imgH = nsImage.size.height
+        let fillScale = max(screenSize.width / imgW, screenSize.height / imgH)
+        let drawW = imgW * fillScale * scale
+        let drawH = imgH * fillScale * scale
+        let drawX = (CGFloat(pixW) - drawW) / 2
+        let drawY = (CGFloat(pixH) - drawH) / 2
+        let drawRect = CGRect(x: drawX, y: drawY, width: drawW, height: drawH)
+
+        var imgRect = CGRect(x: 0, y: 0, width: nsImage.size.width, height: nsImage.size.height)
+        guard let cgImage = nsImage.cgImage(forProposedRect: &imgRect, context: nil, hints: nil) else { return }
+        drawCtx.draw(cgImage, in: drawRect)
+        guard let scaledCG = drawCtx.makeImage() else { return }
+
+        // Blur with CIFilter
+        let ciImage = CIImage(cgImage: scaledCG)
+        let blurred = ciImage.applyingGaussianBlur(sigma: 30)
+        let ciContext = CIContext()
+        guard let blurredCG = ciContext.createCGImage(blurred, from: ciImage.extent) else { return }
+
+        // Upload to Metal texture
+        let texW = blurredCG.width
+        let texH = blurredCG.height
+        let texDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm, width: texW, height: texH, mipmapped: false)
+        texDesc.storageMode = .shared
+        texDesc.usage = .shaderRead
+        guard let texture = device.makeTexture(descriptor: texDesc) else { return }
+
+        guard let uploadCtx = CGContext(
+            data: nil, width: texW, height: texH,
+            bitsPerComponent: 8, bytesPerRow: texW * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return }
+        uploadCtx.draw(blurredCG, in: CGRect(x: 0, y: 0, width: texW, height: texH))
+
+        if let data = uploadCtx.data {
+            texture.replace(
+                region: MTLRegionMake2D(0, 0, texW, texH),
+                mipmapLevel: 0, withBytes: data, bytesPerRow: texW * 4)
+        }
+
+        renderer.backgroundTexture = texture
+    }
+
     // MARK: - Preferences
 
     private func applyCharset() {
@@ -156,7 +248,7 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         if let sheet = configSheet { return sheet }
 
         let w: CGFloat = 320
-        let h: CGFloat = 150
+        let h: CGFloat = 280
         let sheet = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: w, height: h),
             styleMask: [.titled],
@@ -170,15 +262,17 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         let controlX: CGFloat = 110
         let controlW: CGFloat = 190
 
-        // Row 2 (top): Charset
-        let y2: CGFloat = 105
+        let defs = defaults
+
+        // Row 4 (top): Charset
+        let y4: CGFloat = 235
         let csLabel = NSTextField(labelWithString: "Characters:")
-        csLabel.frame = NSRect(x: labelX, y: y2, width: 85, height: 20)
+        csLabel.frame = NSRect(x: labelX, y: y4, width: 85, height: 20)
         contentView.addSubview(csLabel)
 
-        let cPopup = NSPopUpButton(frame: NSRect(x: controlX, y: y2 - 3, width: controlW, height: 26))
+        let cPopup = NSPopUpButton(frame: NSRect(x: controlX, y: y4 - 3, width: controlW, height: 26))
         cPopup.addItems(withTitles: ["Combined (Kana + ASCII)", "ASCII only", "Katakana only"])
-        let curCharset = defaults.string(forKey: prefCharset) ?? "combined"
+        let curCharset = defs.string(forKey: prefCharset) ?? "combined"
         switch curCharset {
         case "ascii": cPopup.selectItem(at: 1)
         case "kana":  cPopup.selectItem(at: 2)
@@ -187,24 +281,67 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         contentView.addSubview(cPopup)
         charsetPopup = cPopup
 
-        // Row 1: FPS
-        let y1: CGFloat = 68
+        // Row 3: Font Size
+        let y3: CGFloat = 198
+        let fsLabel = NSTextField(labelWithString: "Font Size:")
+        fsLabel.frame = NSRect(x: labelX, y: y3, width: 85, height: 20)
+        contentView.addSubview(fsLabel)
+
+        let fsPopup = NSPopUpButton(frame: NSRect(x: controlX, y: y3 - 3, width: controlW, height: 26))
+        let fontSizes = ["10", "12", "14", "16", "18", "20", "24"]
+        fsPopup.addItems(withTitles: fontSizes)
+        let curFontSize = defs.integer(forKey: prefFontSize)
+        if let idx = fontSizes.firstIndex(of: "\(curFontSize)") {
+            fsPopup.selectItem(at: idx)
+        } else {
+            fsPopup.selectItem(at: 2) // default 14
+        }
+        contentView.addSubview(fsPopup)
+        fontSizePopup = fsPopup
+
+        // Row 2: FPS
+        let y2: CGFloat = 161
         let fLabel = NSTextField(labelWithString: "FPS:")
-        fLabel.frame = NSRect(x: labelX, y: y1, width: 85, height: 20)
+        fLabel.frame = NSRect(x: labelX, y: y2, width: 85, height: 20)
         contentView.addSubview(fLabel)
 
-        let curFPS = max(defaults.integer(forKey: prefFPS), 1)
+        let curFPS = max(defs.integer(forKey: prefFPS), 1)
         let slider = NSSlider(value: Double(curFPS), minValue: 1, maxValue: 60,
                               target: self, action: #selector(fpsSliderChanged(_:)))
-        slider.frame = NSRect(x: controlX, y: y1, width: controlW - 40, height: 20)
+        slider.frame = NSRect(x: controlX, y: y2, width: controlW - 40, height: 20)
         contentView.addSubview(slider)
         fpsSlider = slider
 
         let valLabel = NSTextField(labelWithString: "\(curFPS)")
-        valLabel.frame = NSRect(x: controlX + controlW - 35, y: y1, width: 35, height: 20)
+        valLabel.frame = NSRect(x: controlX + controlW - 35, y: y2, width: 35, height: 20)
         valLabel.alignment = .right
         contentView.addSubview(valLabel)
         fpsLabel = valLabel
+
+        // Row 1: Effects
+        let y1: CGFloat = 118
+        let efLabel = NSTextField(labelWithString: "Effects:")
+        efLabel.frame = NSRect(x: labelX, y: y1, width: 85, height: 20)
+        contentView.addSubview(efLabel)
+
+        let checkW: CGFloat = 60
+        let bloom = NSButton(checkboxWithTitle: "Bloom", target: nil, action: nil)
+        bloom.frame = NSRect(x: controlX, y: y1, width: checkW, height: 20)
+        bloom.state = defs.bool(forKey: prefBloom) ? .on : .off
+        contentView.addSubview(bloom)
+        bloomCheck = bloom
+
+        let crt = NSButton(checkboxWithTitle: "CRT", target: nil, action: nil)
+        crt.frame = NSRect(x: controlX + 68, y: y1, width: checkW, height: 20)
+        crt.state = defs.bool(forKey: prefCRT) ? .on : .off
+        contentView.addSubview(crt)
+        crtCheck = crt
+
+        let blur = NSButton(checkboxWithTitle: "Background Blur", target: nil, action: nil)
+        blur.frame = NSRect(x: controlX + 128, y: y1, width: 130, height: 20)
+        blur.state = defs.bool(forKey: prefBlur) ? .on : .off
+        contentView.addSubview(blur)
+        blurCheck = blur
 
         // Buttons
         let okButton = NSButton(frame: NSRect(x: w - 100, y: 12, width: 80, height: 28))
@@ -243,8 +380,17 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         }
         defs.set(charsetValue, forKey: prefCharset)
 
+        let fontSizes = [10, 12, 14, 16, 18, 20, 24]
+        let fsIndex = fontSizePopup?.indexOfSelectedItem ?? 2
+        defs.set(fontSizes[fsIndex], forKey: prefFontSize)
+
         let fps = Int(fpsSlider?.doubleValue ?? 30)
         defs.set(fps, forKey: prefFPS)
+
+        defs.set(bloomCheck?.state == .on, forKey: prefBloom)
+        defs.set(crtCheck?.state == .on, forKey: prefCRT)
+        defs.set(blurCheck?.state == .on, forKey: prefBlur)
+
         defs.synchronize()
 
         applyCharset()
