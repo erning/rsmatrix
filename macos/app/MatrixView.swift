@@ -32,8 +32,8 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
         delegate = self
 
         wantsLayer = true
-        layer?.isOpaque = true
-        layer?.backgroundColor = NSColor.black.cgColor
+        layer?.isOpaque = false
+        layer?.backgroundColor = CGColor.clear
 
         recalculateGrid()
         lastFrameTime = CACurrentMediaTime()

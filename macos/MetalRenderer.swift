@@ -84,7 +84,7 @@ class MetalRenderer {
     // Effect settings
     var bloomEnabled = true
     var crtEnabled = true
-    var backgroundBlurEnabled = false
+    var backgroundBlurEnabled = true
     var isFullscreen = false
     var phosphorDecay: Float = 0.92
     var bloomThreshold: Float = 0.4

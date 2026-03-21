@@ -25,7 +25,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         effectView.blendingMode = .behindWindow
         effectView.state = .active
         effectView.autoresizingMask = [.width, .height]
-        effectView.isHidden = true
+        effectView.isHidden = false
 
         matrixView.autoresizingMask = [.width, .height]
         matrixView.backgroundEffectView = effectView
@@ -35,13 +35,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         window = NSWindow(
             contentRect: frame,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "Matrix"
         window.appearance = NSAppearance(named: .darkAqua)
-        window.titlebarAppearsTransparent = true
         window.contentView = containerView
         window.contentMinSize = NSSize(
             width: matrixView.metalRenderer.cellSize.width * 20,
@@ -49,7 +48,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         window.tabbingMode = .disallowed
         window.collectionBehavior = .fullScreenPrimary
-        window.backgroundColor = .black
+        window.isOpaque = false
+        window.backgroundColor = .clear
         window.center()
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(matrixView)
@@ -149,17 +149,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let effectsMenu = NSMenu(title: "Effects")
         effectsMenuItem.submenu = effectsMenu
         effectsMenu.addItem(
-            withTitle: "Toggle Bloom",
+            withTitle: "Bloom",
             action: #selector(MatrixView.toggleBloom(_:)),
             keyEquivalent: "g"
         ).image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
         effectsMenu.addItem(
-            withTitle: "Toggle CRT",
+            withTitle: "CRT",
             action: #selector(MatrixView.toggleCRT(_:)),
             keyEquivalent: "r"
         ).image = NSImage(systemSymbolName: "tv", accessibilityDescription: nil)
         effectsMenu.addItem(
-            withTitle: "Toggle Background Blur",
+            withTitle: "Background Blur",
             action: #selector(MatrixView.toggleBackgroundBlur(_:)),
             keyEquivalent: "t"
         ).image = NSImage(systemSymbolName: "rectangle.on.rectangle", accessibilityDescription: nil)
