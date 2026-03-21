@@ -121,6 +121,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             action: #selector(MatrixView.zoomReset(_:)),
             keyEquivalent: "0"
         )
+        viewMenu.addItem(.separator())
+        viewMenu.addItem(
+            withTitle: "Metal",
+            action: #selector(MatrixView.setRendererMetal(_:)),
+            keyEquivalent: "1"
+        ).image = NSImage(systemSymbolName: "cpu", accessibilityDescription: nil)
+        viewMenu.addItem(
+            withTitle: "CoreText",
+            action: #selector(MatrixView.setRendererCoreText(_:)),
+            keyEquivalent: "2"
+        ).image = NSImage(systemSymbolName: "textformat", accessibilityDescription: nil)
 
         // Characters menu
         let charMenuItem = NSMenuItem()

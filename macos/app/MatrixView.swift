@@ -1,6 +1,11 @@
 import MetalKit
 import QuartzCore
 
+enum RendererMode {
+    case metal
+    case coreText
+}
+
 class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
     private(set) var metalRenderer: MetalRenderer
     private var simulation: OpaquePointer?
@@ -10,6 +15,13 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
     private var fontSize: CGFloat = 14
     private var currentCharset: UInt32 = 0
     private var isInFullscreen = false
+
+    // Renderer switching
+    private var rendererMode: RendererMode = .metal
+    private var coreTextRenderer: MatrixRenderer?
+    private var bitmapContext: CGContext?
+    private var bitmapWidth: Int = 0
+    private var bitmapHeight: Int = 0
 
     /// Set by AppDelegate for background blur toggle
     var backgroundEffectView: NSVisualEffectView?
@@ -55,6 +67,10 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
         metalRenderer.resizeOffscreenTextures(
             width: Int(size.width), height: Int(size.height))
+        if rendererMode == .coreText {
+            bitmapWidth = 0
+            bitmapHeight = 0
+        }
     }
 
     func draw(in view: MTKView) {
@@ -69,11 +85,65 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
 
         guard let sim = simulation else { return }
         let grid = rsmatrix_get_grid(sim)
-        metalRenderer.updateInstances(
-            grid: grid,
-            width: rsmatrix_grid_width(sim),
-            height: rsmatrix_grid_height(sim))
-        metalRenderer.render(in: self)
+        let w = rsmatrix_grid_width(sim)
+        let h = rsmatrix_grid_height(sim)
+
+        switch rendererMode {
+        case .metal:
+            metalRenderer.updateInstances(grid: grid, width: w, height: h)
+            metalRenderer.render(in: self)
+
+        case .coreText:
+            guard let ctRenderer = coreTextRenderer else { return }
+            ensureBitmapContext()
+            guard let ctx = bitmapContext else { return }
+
+            // Clear to black
+            ctx.saveGState()
+            ctx.resetClip()
+            let unscaledRect = CGRect(x: 0, y: 0, width: bitmapWidth, height: bitmapHeight)
+            // Reset CTM to identity for pixel-level clear
+            let ctm = ctx.ctm
+            ctx.concatenate(ctm.inverted())
+            ctx.setFillColor(red: 0, green: 0, blue: 0, alpha: 1)
+            ctx.fill(unscaledRect)
+            // Restore scaled CTM
+            ctx.concatenate(ctm)
+            ctx.restoreGState()
+
+            // Render glyphs
+            ctRenderer.render(context: ctx, grid: grid, width: w, height: h)
+
+            // Upload bitmap to Metal texture and present
+            if let data = ctx.data {
+                metalRenderer.ensureBlitTexture(width: bitmapWidth, height: bitmapHeight)
+                let region = MTLRegionMake2D(0, 0, bitmapWidth, bitmapHeight)
+                metalRenderer.blitTexture?.replace(
+                    region: region, mipmapLevel: 0,
+                    withBytes: data, bytesPerRow: bitmapWidth * 4)
+                metalRenderer.renderBlit(in: self)
+            }
+        }
+    }
+
+    private func ensureBitmapContext() {
+        let dw = Int(drawableSize.width)
+        let dh = Int(drawableSize.height)
+        guard dw > 0 && dh > 0 else { return }
+        guard dw != bitmapWidth || dh != bitmapHeight else { return }
+
+        bitmapWidth = dw
+        bitmapHeight = dh
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        bitmapContext = CGContext(
+            data: nil, width: dw, height: dh,
+            bitsPerComponent: 8, bytesPerRow: dw * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+
+        // Scale for Retina so CoreText draws in points
+        let scale = window?.backingScaleFactor ?? 2.0
+        bitmapContext?.scaleBy(x: scale, y: scale)
     }
 
     override func viewDidMoveToWindow() {
@@ -130,7 +200,9 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
     }
 
     private func recalculateGrid() {
-        let cs = metalRenderer.cellSize
+        let cs = rendererMode == .coreText
+            ? (coreTextRenderer?.cellSize ?? metalRenderer.cellSize)
+            : metalRenderer.cellSize
         let newWidth = max(UInt32(bounds.width / cs.width), 1)
         let newHeight = max(UInt32(bounds.height / cs.height), 1)
 
@@ -178,16 +250,44 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
             menuItem.state = currentCharset == 1 ? .on : .off
         case #selector(setCharsetKana):
             menuItem.state = currentCharset == 2 ? .on : .off
+        case #selector(setRendererMetal):
+            menuItem.state = rendererMode == .metal ? .on : .off
+        case #selector(setRendererCoreText):
+            menuItem.state = rendererMode == .coreText ? .on : .off
         case #selector(toggleBloom):
             menuItem.state = metalRenderer.bloomEnabled ? .on : .off
+            return rendererMode == .metal
         case #selector(toggleCRT):
             menuItem.state = metalRenderer.crtEnabled ? .on : .off
+            return rendererMode == .metal
         case #selector(toggleBackgroundBlur):
             menuItem.state = metalRenderer.backgroundBlurEnabled ? .on : .off
+            return rendererMode == .metal
         default:
             break
         }
         return true
+    }
+
+    // MARK: - Renderer Switching
+
+    @objc func setRendererMetal(_ sender: Any?) {
+        guard rendererMode != .metal else { return }
+        rendererMode = .metal
+        coreTextRenderer = nil
+        bitmapContext = nil
+        recalculateGrid()
+        applyBlurVisualState()
+    }
+
+    @objc func setRendererCoreText(_ sender: Any?) {
+        guard rendererMode != .coreText else { return }
+        rendererMode = .coreText
+        coreTextRenderer = MatrixRenderer(fontSize: fontSize)
+        bitmapWidth = 0
+        bitmapHeight = 0
+        recalculateGrid()
+        applyBlurVisualState()
     }
 
     // MARK: - Zoom
@@ -210,14 +310,19 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
     private func rebuildRenderer() {
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
         metalRenderer.rebuildForFontSize(fontSize, scaleFactor: scale)
+        if rendererMode == .coreText {
+            coreTextRenderer = MatrixRenderer(fontSize: fontSize)
+            bitmapWidth = 0
+            bitmapHeight = 0
+        }
         recalculateGrid()
-        // Re-create offscreen textures for the new cell size
         metalRenderer.resizeOffscreenTextures(
             width: Int(drawableSize.width), height: Int(drawableSize.height))
+        let cs = rendererMode == .coreText
+            ? (coreTextRenderer?.cellSize ?? metalRenderer.cellSize)
+            : metalRenderer.cellSize
         window?.contentMinSize = NSSize(
-            width: metalRenderer.cellSize.width * 20,
-            height: metalRenderer.cellSize.height * 10
-        )
+            width: cs.width * 20, height: cs.height * 10)
     }
 
     // MARK: - Effects
@@ -246,7 +351,8 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
     }
 
     private func applyBlurVisualState() {
-        let active = metalRenderer.backgroundBlurEnabled && !isInFullscreen
+        let active = rendererMode == .metal
+            && metalRenderer.backgroundBlurEnabled && !isInFullscreen
         metalRenderer.isFullscreen = isInFullscreen
 
         backgroundEffectView?.isHidden = !active

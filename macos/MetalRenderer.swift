@@ -54,6 +54,10 @@ class MetalRenderer {
     private let bloomBrightPipeline: MTLRenderPipelineState
     private let blurPipeline: MTLRenderPipelineState
     private let compositePipeline: MTLRenderPipelineState
+    private let blitPipeline: MTLRenderPipelineState
+
+    // Blit texture for CoreText rendering path
+    private(set) var blitTexture: MTLTexture?
 
     // Glyph atlas
     private var glyphAtlas: MTLTexture!
@@ -126,6 +130,8 @@ class MetalRenderer {
             vertex: "fullscreen_vertex", fragment: "blur_fragment", format: offscreenFormat)
         self.compositePipeline = Self.makePipeline(device: device, library: library,
             vertex: "fullscreen_vertex", fragment: "composite_fragment", format: drawableFormat)
+        self.blitPipeline = Self.makePipeline(device: device, library: library,
+            vertex: "fullscreen_vertex", fragment: "blit_fragment", format: drawableFormat)
 
         // Build glyph atlas
         buildAtlas(scaleFactor: NSScreen.main?.backingScaleFactor ?? 2.0)
@@ -563,5 +569,36 @@ class MetalRenderer {
 
         enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         enc.endEncoding()
+    }
+
+    // MARK: - CoreText blit support
+
+    func ensureBlitTexture(width: Int, height: Int) {
+        if let tex = blitTexture, tex.width == width, tex.height == height { return }
+        let desc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
+        desc.storageMode = .shared
+        desc.usage = .shaderRead
+        blitTexture = device.makeTexture(descriptor: desc)
+    }
+
+    func renderBlit(in view: MTKView) {
+        guard let blitTex = blitTexture,
+              let rpd = view.currentRenderPassDescriptor,
+              let drawable = view.currentDrawable,
+              let cb = commandQueue.makeCommandBuffer()
+        else { return }
+
+        guard let enc = cb.makeRenderCommandEncoder(descriptor: rpd) else { return }
+        enc.setRenderPipelineState(blitPipeline)
+        enc.setViewport(MTLViewport(originX: 0, originY: 0,
+            width: Double(view.drawableSize.width),
+            height: Double(view.drawableSize.height), znear: 0, zfar: 1))
+        enc.setFragmentTexture(blitTex, index: 0)
+        enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        enc.endEncoding()
+
+        cb.present(drawable)
+        cb.commit()
     }
 }

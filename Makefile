@@ -1,7 +1,7 @@
 RUST_LIB = target/release/librsmatrix_ffi.a
 BRIDGING_HEADER = macos/rsmatrix-ffi-Bridging.h
 SWIFT_FILES = macos/saver/MatrixSaverView.swift macos/MatrixRenderer.swift
-APP_SWIFT_FILES = macos/app/main.swift macos/app/MatrixView.swift macos/MetalRenderer.swift
+APP_SWIFT_FILES = macos/app/main.swift macos/app/MatrixView.swift macos/MetalRenderer.swift macos/MatrixRenderer.swift
 METAL_SOURCE = macos/app/Shaders.metal
 METAL_LIB = $(BUILD_DIR)/Matrix.app/Contents/Resources/default.metallib
 BUILD_DIR = build
