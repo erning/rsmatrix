@@ -4,7 +4,6 @@ import CoreImage
 
 private let bundleID = "com.rsmatrix.MatrixSaver"
 private let prefCharset  = "Charset"         // "combined", "ascii", "kana"
-private let prefFPS      = "FPS"             // Int 1-60
 private let prefFontSize = "FontSize"        // Int (10,12,14,16,18,20,24)
 private let prefBloom    = "Bloom"           // Bool
 private let prefCRT      = "CRT"             // Bool
@@ -24,8 +23,6 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
     private var configSheet: NSWindow?
     private var charsetPopup: NSPopUpButton?
     private var fontSizePopup: NSPopUpButton?
-    private var fpsSlider: NSSlider?
-    private var fpsLabel: NSTextField?
     private var bloomCheck: NSButton?
     private var crtCheck: NSButton?
     private var blurCheck: NSButton?
@@ -40,15 +37,11 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         let defs = defaults
         defs.register(defaults: [
             prefCharset: "combined",
-            prefFPS: 30,
             prefFontSize: 14,
             prefBloom: true,
             prefCRT: true,
             prefBlur: true,
         ])
-
-        let fps = defs.integer(forKey: prefFPS)
-        animationTimeInterval = 1.0 / Double(max(fps, 1))
     }
 
     @available(*, unavailable)
@@ -69,8 +62,6 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         applyCharset()
 
         let defs = defaults
-        let fps = defs.integer(forKey: prefFPS)
-        animationTimeInterval = 1.0 / Double(max(fps, 1))
 
         guard let device = MTLCreateSystemDefaultDevice() else { return }
 
@@ -94,11 +85,29 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         let view = MTKView(frame: bounds, device: device)
         view.colorPixelFormat = .bgra8Unorm
         view.clearColor = MTLClearColorMake(0, 0, 0, 1)
-        view.isPaused = true
-        view.enableSetNeedsDisplay = false
         view.autoresizingMask = [.width, .height]
         view.layer?.isOpaque = true
         view.delegate = self
+
+        // Adapt frame rate to display refresh rate
+        let screen = window?.screen ?? NSScreen.main
+        var fps = 60
+        if let screen = screen {
+            let screenNumber = screen.deviceDescription[
+                NSDeviceDescriptionKey("NSScreenNumber")]
+            if let displayID = screenNumber as? CGDirectDisplayID,
+               let mode = CGDisplayCopyDisplayMode(displayID),
+               mode.refreshRate > 0 {
+                fps = Int(mode.refreshRate)
+            } else {
+                fps = screen.maximumFramesPerSecond
+                if fps <= 0 { fps = 60 }
+            }
+        }
+        view.preferredFramesPerSecond = fps
+        view.isPaused = false
+        view.enableSetNeedsDisplay = false
+
         addSubview(view)
         mtkView = view
 
@@ -120,6 +129,16 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
     }
 
     override func animateOneFrame() {
+        // No-op: MTKView drives the render loop at display refresh rate
+    }
+
+    // MARK: - MTKViewDelegate
+
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+        metalRenderer?.resizeOffscreenTextures(width: Int(size.width), height: Int(size.height))
+    }
+
+    func draw(in view: MTKView) {
         let now = CACurrentMediaTime()
         let delta = now - lastFrameTime
         lastFrameTime = now
@@ -136,17 +155,7 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
             width: rsmatrix_grid_width(sim),
             height: rsmatrix_grid_height(sim)
         )
-        mtkView?.draw()
-    }
-
-    // MARK: - MTKViewDelegate
-
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
-        metalRenderer?.resizeOffscreenTextures(width: Int(size.width), height: Int(size.height))
-    }
-
-    func draw(in view: MTKView) {
-        metalRenderer?.render(in: view)
+        renderer.render(in: view)
     }
 
     // MARK: - Resize
@@ -248,7 +257,7 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         if let sheet = configSheet { return sheet }
 
         let w: CGFloat = 320
-        let h: CGFloat = 280
+        let h: CGFloat = 260
         let sheet = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: w, height: h),
             styleMask: [.titled],
@@ -264,13 +273,13 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
 
         let defs = defaults
 
-        // Row 4 (top): Charset
-        let y4: CGFloat = 235
+        // Row 5 (top): Charset
+        let y5: CGFloat = 215
         let csLabel = NSTextField(labelWithString: "Characters:")
-        csLabel.frame = NSRect(x: labelX, y: y4, width: 85, height: 20)
+        csLabel.frame = NSRect(x: labelX, y: y5, width: 85, height: 20)
         contentView.addSubview(csLabel)
 
-        let cPopup = NSPopUpButton(frame: NSRect(x: controlX, y: y4 - 3, width: controlW, height: 26))
+        let cPopup = NSPopUpButton(frame: NSRect(x: controlX, y: y5 - 3, width: controlW, height: 26))
         cPopup.addItems(withTitles: ["Combined (Kana + ASCII)", "ASCII only", "Katakana only"])
         let curCharset = defs.string(forKey: prefCharset) ?? "combined"
         switch curCharset {
@@ -281,13 +290,13 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         contentView.addSubview(cPopup)
         charsetPopup = cPopup
 
-        // Row 3: Font Size
-        let y3: CGFloat = 198
+        // Row 4: Font Size
+        let y4: CGFloat = 178
         let fsLabel = NSTextField(labelWithString: "Font Size:")
-        fsLabel.frame = NSRect(x: labelX, y: y3, width: 85, height: 20)
+        fsLabel.frame = NSRect(x: labelX, y: y4, width: 85, height: 20)
         contentView.addSubview(fsLabel)
 
-        let fsPopup = NSPopUpButton(frame: NSRect(x: controlX, y: y3 - 3, width: controlW, height: 26))
+        let fsPopup = NSPopUpButton(frame: NSRect(x: controlX, y: y4 - 3, width: controlW, height: 26))
         let fontSizes = ["10", "12", "14", "16", "18", "20", "24"]
         fsPopup.addItems(withTitles: fontSizes)
         let curFontSize = defs.integer(forKey: prefFontSize)
@@ -299,46 +308,30 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         contentView.addSubview(fsPopup)
         fontSizePopup = fsPopup
 
-        // Row 2: FPS
-        let y2: CGFloat = 161
-        let fLabel = NSTextField(labelWithString: "FPS:")
-        fLabel.frame = NSRect(x: labelX, y: y2, width: 85, height: 20)
-        contentView.addSubview(fLabel)
-
-        let curFPS = max(defs.integer(forKey: prefFPS), 1)
-        let slider = NSSlider(value: Double(curFPS), minValue: 1, maxValue: 60,
-                              target: self, action: #selector(fpsSliderChanged(_:)))
-        slider.frame = NSRect(x: controlX, y: y2, width: controlW - 40, height: 20)
-        contentView.addSubview(slider)
-        fpsSlider = slider
-
-        let valLabel = NSTextField(labelWithString: "\(curFPS)")
-        valLabel.frame = NSRect(x: controlX + controlW - 35, y: y2, width: 35, height: 20)
-        valLabel.alignment = .right
-        contentView.addSubview(valLabel)
-        fpsLabel = valLabel
-
-        // Row 1: Effects
-        let y1: CGFloat = 118
+        // Row 3: Bloom
+        let y3: CGFloat = 135
         let efLabel = NSTextField(labelWithString: "Effects:")
-        efLabel.frame = NSRect(x: labelX, y: y1, width: 85, height: 20)
+        efLabel.frame = NSRect(x: labelX, y: y3, width: 85, height: 20)
         contentView.addSubview(efLabel)
 
-        let checkW: CGFloat = 60
         let bloom = NSButton(checkboxWithTitle: "Bloom", target: nil, action: nil)
-        bloom.frame = NSRect(x: controlX, y: y1, width: checkW, height: 20)
+        bloom.frame = NSRect(x: controlX, y: y3, width: controlW, height: 20)
         bloom.state = defs.bool(forKey: prefBloom) ? .on : .off
         contentView.addSubview(bloom)
         bloomCheck = bloom
 
+        // Row 2: CRT
+        let y2: CGFloat = 110
         let crt = NSButton(checkboxWithTitle: "CRT", target: nil, action: nil)
-        crt.frame = NSRect(x: controlX + 68, y: y1, width: checkW, height: 20)
+        crt.frame = NSRect(x: controlX, y: y2, width: controlW, height: 20)
         crt.state = defs.bool(forKey: prefCRT) ? .on : .off
         contentView.addSubview(crt)
         crtCheck = crt
 
+        // Row 1: Background Blur
+        let y1: CGFloat = 85
         let blur = NSButton(checkboxWithTitle: "Background Blur", target: nil, action: nil)
-        blur.frame = NSRect(x: controlX + 128, y: y1, width: 130, height: 20)
+        blur.frame = NSRect(x: controlX, y: y1, width: controlW, height: 20)
         blur.state = defs.bool(forKey: prefBlur) ? .on : .off
         contentView.addSubview(blur)
         blurCheck = blur
@@ -365,10 +358,6 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         return sheet
     }
 
-    @objc private func fpsSliderChanged(_ sender: NSSlider) {
-        fpsLabel?.stringValue = "\(Int(sender.doubleValue))"
-    }
-
     @objc private func configSheetOK(_ sender: Any?) {
         let defs = defaults
 
@@ -384,9 +373,6 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         let fsIndex = fontSizePopup?.indexOfSelectedItem ?? 2
         defs.set(fontSizes[fsIndex], forKey: prefFontSize)
 
-        let fps = Int(fpsSlider?.doubleValue ?? 30)
-        defs.set(fps, forKey: prefFPS)
-
         defs.set(bloomCheck?.state == .on, forKey: prefBloom)
         defs.set(crtCheck?.state == .on, forKey: prefCRT)
         defs.set(blurCheck?.state == .on, forKey: prefBlur)
@@ -394,7 +380,6 @@ class MatrixSaverView: ScreenSaverView, MTKViewDelegate {
         defs.synchronize()
 
         applyCharset()
-        animationTimeInterval = 1.0 / Double(max(fps, 1))
 
         closeSheet()
     }
