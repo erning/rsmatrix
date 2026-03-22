@@ -23,11 +23,6 @@ class MatrixView: NSView, MTKViewDelegate, NSMenuItemValidation {
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
 
-    override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .init(
-            image: NSImage(size: NSSize(width: 1, height: 1)), hotSpot: .zero))
-    }
-
     init(frame: NSRect, metalDevice: MTLDevice) {
         let config = RenderConfig(fontSize: fontSize)
         self.scene = MetalSceneController(device: metalDevice, config: config)
@@ -308,8 +303,16 @@ class MatrixView: NSView, MTKViewDelegate, NSMenuItemValidation {
         }
     }
 
+    override func resetCursorRects() {
+        if isInFullscreen {
+            addCursorRect(bounds, cursor: .init(
+                image: NSImage(size: NSSize(width: 1, height: 1)), hotSpot: .zero))
+        }
+    }
+
     @objc private func didEnterFullscreen(_ notification: Notification) {
         isInFullscreen = true
+        window?.invalidateCursorRects(for: self)
         if scene.metalRenderer.backgroundBlurEnabled {
             scene.captureBlurredDesktop(screen: window?.screen ?? NSScreen.main)
         }
@@ -317,6 +320,7 @@ class MatrixView: NSView, MTKViewDelegate, NSMenuItemValidation {
 
     @objc private func didExitFullscreen(_ notification: Notification) {
         isInFullscreen = false
+        window?.invalidateCursorRects(for: self)
         if scene.metalRenderer.backgroundBlurEnabled {
             scene.captureBlurredDesktop(screen: window?.screen ?? NSScreen.main)
         }

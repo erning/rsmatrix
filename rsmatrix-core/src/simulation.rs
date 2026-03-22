@@ -116,7 +116,12 @@ impl Simulation {
                     *remaining_ms -= delta_ms as i32;
                     if *remaining_ms <= 0 {
                         if column.streams.len() < max_streams {
-                            let speed = 30 + rng.random_range(0..110u32);
+                            let speed = if rng.random_range(0..100u32) < 2 {
+                                rng.random_range(20..40u32)
+                            } else {
+                                let r = rng.random_range(0..100u32);
+                                60 + r * r / 40
+                            };
                             let length = 10 + rng.random_range(0..8i32);
                             column.streams.push(Stream {
                                 speed_ms: speed,
