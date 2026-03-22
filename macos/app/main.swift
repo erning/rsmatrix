@@ -163,23 +163,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             action: #selector(MatrixView.toggleBackgroundBlur(_:)),
             keyEquivalent: "t"
         ).image = NSImage(systemSymbolName: "rectangle.on.rectangle", accessibilityDescription: nil)
-        effectsMenu.addItem(.separator())
-
-        let blurSub = NSMenu(title: "Blur Intensity")
-        blurSub.addItem(withTitle: "Light",  action: #selector(MatrixView.setBlurLight(_:)),  keyEquivalent: "")
-        blurSub.addItem(withTitle: "Medium", action: #selector(MatrixView.setBlurMedium(_:)), keyEquivalent: "")
-        blurSub.addItem(withTitle: "Heavy",  action: #selector(MatrixView.setBlurHeavy(_:)),  keyEquivalent: "")
-        let blurItem = NSMenuItem(title: "Blur Intensity", action: nil, keyEquivalent: "")
-        blurItem.submenu = blurSub
-        effectsMenu.addItem(blurItem)
-
-        let darkSub = NSMenu(title: "Darkness Level")
-        darkSub.addItem(withTitle: "Light",  action: #selector(MatrixView.setDarknessLight(_:)),  keyEquivalent: "")
-        darkSub.addItem(withTitle: "Medium", action: #selector(MatrixView.setDarknessMedium(_:)), keyEquivalent: "")
-        darkSub.addItem(withTitle: "Heavy",  action: #selector(MatrixView.setDarknessHeavy(_:)),  keyEquivalent: "")
-        let darkItem = NSMenuItem(title: "Darkness Level", action: nil, keyEquivalent: "")
-        darkItem.submenu = darkSub
-        effectsMenu.addItem(darkItem)
 
         NSApplication.shared.mainMenu = mainMenu
     }

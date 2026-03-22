@@ -217,24 +217,6 @@ class MatrixView: NSView, MTKViewDelegate, NSMenuItemValidation {
         case #selector(toggleBackgroundBlur):
             menuItem.state = scene.metalRenderer.backgroundBlurEnabled ? .on : .off
             return rendererMode == .metal
-        case #selector(setBlurLight):
-            menuItem.state = scene.metalRenderer.blurSigma == 10 ? .on : .off
-            return rendererMode == .metal && scene.metalRenderer.backgroundBlurEnabled
-        case #selector(setBlurMedium):
-            menuItem.state = scene.metalRenderer.blurSigma == 30 ? .on : .off
-            return rendererMode == .metal && scene.metalRenderer.backgroundBlurEnabled
-        case #selector(setBlurHeavy):
-            menuItem.state = scene.metalRenderer.blurSigma == 50 ? .on : .off
-            return rendererMode == .metal && scene.metalRenderer.backgroundBlurEnabled
-        case #selector(setDarknessLight):
-            menuItem.state = scene.metalRenderer.backgroundDarkness == 0.50 ? .on : .off
-            return rendererMode == .metal && scene.metalRenderer.backgroundBlurEnabled
-        case #selector(setDarknessMedium):
-            menuItem.state = scene.metalRenderer.backgroundDarkness == 0.65 ? .on : .off
-            return rendererMode == .metal && scene.metalRenderer.backgroundBlurEnabled
-        case #selector(setDarknessHeavy):
-            menuItem.state = scene.metalRenderer.backgroundDarkness == 0.80 ? .on : .off
-            return rendererMode == .metal && scene.metalRenderer.backgroundBlurEnabled
         default:
             break
         }
@@ -325,23 +307,6 @@ class MatrixView: NSView, MTKViewDelegate, NSMenuItemValidation {
             scene.metalRenderer.backgroundTexture = nil
         }
     }
-
-    // Blur intensity (CIFilter sigma)
-    @objc func setBlurLight(_ sender: Any?)  { setBlurSigma(10) }
-    @objc func setBlurMedium(_ sender: Any?) { setBlurSigma(30) }
-    @objc func setBlurHeavy(_ sender: Any?)  { setBlurSigma(50) }
-
-    private func setBlurSigma(_ sigma: Float) {
-        scene.metalRenderer.blurSigma = sigma
-        if scene.metalRenderer.backgroundBlurEnabled {
-            scene.captureBlurredDesktop(screen: window?.screen ?? NSScreen.main)
-        }
-    }
-
-    // Darkness level (unified across windowed and fullscreen)
-    @objc func setDarknessLight(_ sender: Any?)  { scene.metalRenderer.backgroundDarkness = 0.50 }
-    @objc func setDarknessMedium(_ sender: Any?) { scene.metalRenderer.backgroundDarkness = 0.65 }
-    @objc func setDarknessHeavy(_ sender: Any?)  { scene.metalRenderer.backgroundDarkness = 0.80 }
 
     @objc private func didEnterFullscreen(_ notification: Notification) {
         isInFullscreen = true
