@@ -25,6 +25,7 @@ struct CompositeUniforms {
     float viewHeightPixels;
     float backgroundAlpha;
     float hasBackground;
+    float backgroundDarkness;
 };
 
 // ============================================================
@@ -200,7 +201,7 @@ fragment float4 composite_fragment(
     // Background compositing
     if (uniforms.hasBackground > 0.5) {
         float4 bg = background.sample(s, uv);
-        bg.rgb *= 0.17;
+        bg.rgb *= (1.0 - uniforms.backgroundDarkness);
         color = float4(bg.rgb * (1.0 - color.a) + color.rgb, 1.0);
     } else {
         color.a = max(alpha, uniforms.backgroundAlpha);

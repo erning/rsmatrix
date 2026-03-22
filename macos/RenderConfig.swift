@@ -5,7 +5,6 @@ struct RenderConfig {
     var bloomEnabled: Bool = true
     var crtEnabled: Bool = true
     var backgroundBlurEnabled: Bool = true
-    var isFullscreen: Bool = false
     var shaderBundle: Bundle? = nil
     var scaleFactor: CGFloat? = nil
 
@@ -13,7 +12,6 @@ struct RenderConfig {
         fontSize: 14,
         bloomEnabled: true,
         crtEnabled: true,
-        backgroundBlurEnabled: true,
-        isFullscreen: true
+        backgroundBlurEnabled: true
     )
 }

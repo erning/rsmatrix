@@ -16,7 +16,6 @@ class MetalSceneController {
         metalRenderer.bloomEnabled = config.bloomEnabled
         metalRenderer.crtEnabled = config.crtEnabled
         metalRenderer.backgroundBlurEnabled = config.backgroundBlurEnabled
-        metalRenderer.isFullscreen = config.isFullscreen
 
         mtkView = MTKView(frame: .zero, device: device)
         mtkView.colorPixelFormat = .bgra8Unorm
@@ -53,7 +52,8 @@ class MetalSceneController {
 
     func captureBlurredDesktop(screen: NSScreen?) {
         metalRenderer.backgroundTexture = MetalRenderer.captureBlurredDesktop(
-            device: mtkView.device!, screen: screen)
+            device: mtkView.device!, screen: screen,
+            sigma: Double(metalRenderer.blurSigma))
     }
 
     func tearDown() {

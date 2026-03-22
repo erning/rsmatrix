@@ -20,6 +20,7 @@ struct CompositeUniforms {
     var viewHeightPixels: Float
     var backgroundAlpha: Float
     var hasBackground: Float
+    var backgroundDarkness: Float
 }
 
 struct CellInstance {
@@ -93,7 +94,6 @@ class MetalRenderer {
     var bloomEnabled = true
     var crtEnabled = true
     var backgroundBlurEnabled = true
-    var isFullscreen = false
     var backgroundTexture: MTLTexture?
     var phosphorDecay: Float = 0.92
     var bloomThreshold: Float = 0.4
@@ -101,6 +101,8 @@ class MetalRenderer {
     var scanlineIntensity: Float = 0.15
     var distortionStrength: Float = 0.05
     var vignetteStrength: Float = 0.3
+    var backgroundDarkness: Float = 0.65
+    var blurSigma: Float = 30
 
     // MARK: - Init
 
@@ -380,9 +382,7 @@ class MetalRenderer {
               let bloomTmp = bloomTempTexture
         else { return }
 
-        let blurActive = backgroundBlurEnabled && !isFullscreen
-        let bgAlpha = blurActive ? 0.75 : 1.0
-        view.clearColor = MTLClearColorMake(0, 0, 0, bgAlpha)
+        view.clearColor = MTLClearColorMake(0, 0, 0, 1)
 
         guard let compositeRPD = view.currentRenderPassDescriptor,
               let drawable = view.currentDrawable,
@@ -564,15 +564,15 @@ class MetalRenderer {
         enc.setFragmentTexture(bloom, index: 1)
         enc.setFragmentTexture(backgroundTexture ?? scene, index: 2)
 
-        let blurActive = backgroundBlurEnabled && !isFullscreen
         var uniforms = CompositeUniforms(
             bloomIntensity: bloomEnabled ? bloomIntensityValue : 0,
             scanlineIntensity: crtEnabled ? scanlineIntensity : 0,
             distortionStrength: crtEnabled ? distortionStrength : 0,
             vignetteStrength: crtEnabled ? vignetteStrength : 0,
             viewHeightPixels: Float(drawableSize.height),
-            backgroundAlpha: blurActive ? 0.75 : 1.0,
-            hasBackground: backgroundTexture != nil ? 1.0 : 0.0
+            backgroundAlpha: 1.0,
+            hasBackground: backgroundTexture != nil ? 1.0 : 0.0,
+            backgroundDarkness: backgroundDarkness
         )
         enc.setFragmentBytes(&uniforms, length: MemoryLayout<CompositeUniforms>.size, index: 0)
 
@@ -637,7 +637,7 @@ class MetalRenderer {
 
     private static let ciContext = CIContext()
 
-    static func captureBlurredDesktop(device: MTLDevice, screen: NSScreen?) -> MTLTexture? {
+    static func captureBlurredDesktop(device: MTLDevice, screen: NSScreen?, sigma: Double = 30) -> MTLTexture? {
         guard let screen = screen,
               let wallpaperURL = NSWorkspace.shared.desktopImageURL(for: screen),
               let nsImage = NSImage(contentsOf: wallpaperURL)
@@ -674,7 +674,7 @@ class MetalRenderer {
 
         // Blur with CIFilter
         let ciImage = CIImage(cgImage: scaledCG)
-        let blurred = ciImage.applyingGaussianBlur(sigma: 30)
+        let blurred = ciImage.applyingGaussianBlur(sigma: sigma)
         guard let blurredCG = ciContext.createCGImage(blurred, from: ciImage.extent) else { return nil }
 
         // Upload to Metal texture

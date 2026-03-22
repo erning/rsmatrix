@@ -4,7 +4,6 @@ import Metal
 class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
     private var matrixView: MatrixView!
-    private var effectView: NSVisualEffectView!
     private var startFullscreen = false
     private var initialCharset: UInt32 = 0
 
@@ -21,21 +20,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             matrixView.currentCharset = initialCharset
         }
 
-        // Container view holds the blur effect view behind the Metal view
-        let containerView = NSView(frame: frame)
-
-        effectView = NSVisualEffectView(frame: frame)
-        effectView.material = .hudWindow
-        effectView.blendingMode = .behindWindow
-        effectView.state = .active
-        effectView.autoresizingMask = [.width, .height]
-        effectView.isHidden = false
-
         matrixView.autoresizingMask = [.width, .height]
-        matrixView.backgroundEffectView = effectView
-
-        containerView.addSubview(effectView)
-        containerView.addSubview(matrixView)
 
         window = NSWindow(
             contentRect: frame,
@@ -45,15 +30,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         window.title = "Matrix"
         window.appearance = NSAppearance(named: .darkAqua)
-        window.contentView = containerView
+        window.contentView = matrixView
         window.contentMinSize = NSSize(
             width: matrixView.scene.metalRenderer.cellSize.width * 20,
             height: matrixView.scene.metalRenderer.cellSize.height * 10
         )
         window.tabbingMode = .disallowed
         window.collectionBehavior = .fullScreenPrimary
-        window.isOpaque = false
-        window.backgroundColor = .clear
         window.center()
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(matrixView)
@@ -180,6 +163,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             action: #selector(MatrixView.toggleBackgroundBlur(_:)),
             keyEquivalent: "t"
         ).image = NSImage(systemSymbolName: "rectangle.on.rectangle", accessibilityDescription: nil)
+        effectsMenu.addItem(.separator())
+
+        let blurSub = NSMenu(title: "Blur Intensity")
+        blurSub.addItem(withTitle: "Light",  action: #selector(MatrixView.setBlurLight(_:)),  keyEquivalent: "")
+        blurSub.addItem(withTitle: "Medium", action: #selector(MatrixView.setBlurMedium(_:)), keyEquivalent: "")
+        blurSub.addItem(withTitle: "Heavy",  action: #selector(MatrixView.setBlurHeavy(_:)),  keyEquivalent: "")
+        let blurItem = NSMenuItem(title: "Blur Intensity", action: nil, keyEquivalent: "")
+        blurItem.submenu = blurSub
+        effectsMenu.addItem(blurItem)
+
+        let darkSub = NSMenu(title: "Darkness Level")
+        darkSub.addItem(withTitle: "Light",  action: #selector(MatrixView.setDarknessLight(_:)),  keyEquivalent: "")
+        darkSub.addItem(withTitle: "Medium", action: #selector(MatrixView.setDarknessMedium(_:)), keyEquivalent: "")
+        darkSub.addItem(withTitle: "Heavy",  action: #selector(MatrixView.setDarknessHeavy(_:)),  keyEquivalent: "")
+        let darkItem = NSMenuItem(title: "Darkness Level", action: nil, keyEquivalent: "")
+        darkItem.submenu = darkSub
+        effectsMenu.addItem(darkItem)
 
         NSApplication.shared.mainMenu = mainMenu
     }

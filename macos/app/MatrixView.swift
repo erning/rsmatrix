@@ -20,9 +20,6 @@ class MatrixView: NSView, MTKViewDelegate, NSMenuItemValidation {
     private var bitmapWidth: Int = 0
     private var bitmapHeight: Int = 0
 
-    /// Set by AppDelegate for background blur toggle
-    var backgroundEffectView: NSVisualEffectView?
-
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
 
@@ -40,8 +37,6 @@ class MatrixView: NSView, MTKViewDelegate, NSMenuItemValidation {
         scene.mtkView.autoresizingMask = [.width, .height]
         scene.mtkView.delegate = self
         scene.mtkView.wantsLayer = true
-        scene.mtkView.layer?.isOpaque = false
-        scene.mtkView.layer?.backgroundColor = CGColor.clear
         addSubview(scene.mtkView)
 
         scene.updatePreferredFrameRate(for: nil)
@@ -165,7 +160,7 @@ class MatrixView: NSView, MTKViewDelegate, NSMenuItemValidation {
             recalculateGrid()
         }
         lastBackingScale = scale
-        if isInFullscreen && scene.metalRenderer.backgroundBlurEnabled {
+        if scene.metalRenderer.backgroundBlurEnabled {
             scene.captureBlurredDesktop(screen: window?.screen ?? NSScreen.main)
         }
     }
@@ -222,6 +217,24 @@ class MatrixView: NSView, MTKViewDelegate, NSMenuItemValidation {
         case #selector(toggleBackgroundBlur):
             menuItem.state = scene.metalRenderer.backgroundBlurEnabled ? .on : .off
             return rendererMode == .metal
+        case #selector(setBlurLight):
+            menuItem.state = scene.metalRenderer.blurSigma == 10 ? .on : .off
+            return rendererMode == .metal && scene.metalRenderer.backgroundBlurEnabled
+        case #selector(setBlurMedium):
+            menuItem.state = scene.metalRenderer.blurSigma == 30 ? .on : .off
+            return rendererMode == .metal && scene.metalRenderer.backgroundBlurEnabled
+        case #selector(setBlurHeavy):
+            menuItem.state = scene.metalRenderer.blurSigma == 50 ? .on : .off
+            return rendererMode == .metal && scene.metalRenderer.backgroundBlurEnabled
+        case #selector(setDarknessLight):
+            menuItem.state = scene.metalRenderer.backgroundDarkness == 0.50 ? .on : .off
+            return rendererMode == .metal && scene.metalRenderer.backgroundBlurEnabled
+        case #selector(setDarknessMedium):
+            menuItem.state = scene.metalRenderer.backgroundDarkness == 0.65 ? .on : .off
+            return rendererMode == .metal && scene.metalRenderer.backgroundBlurEnabled
+        case #selector(setDarknessHeavy):
+            menuItem.state = scene.metalRenderer.backgroundDarkness == 0.80 ? .on : .off
+            return rendererMode == .metal && scene.metalRenderer.backgroundBlurEnabled
         default:
             break
         }
@@ -237,7 +250,6 @@ class MatrixView: NSView, MTKViewDelegate, NSMenuItemValidation {
         bitmapContext = nil
         recalculateGrid()
         updateContentMinSize()
-        applyBlurVisualState()
     }
 
     @objc func setRendererCoreText(_ sender: Any?) {
@@ -248,7 +260,6 @@ class MatrixView: NSView, MTKViewDelegate, NSMenuItemValidation {
         bitmapHeight = 0
         recalculateGrid()
         updateContentMinSize()
-        applyBlurVisualState()
     }
 
     // MARK: - Zoom
@@ -308,19 +319,32 @@ class MatrixView: NSView, MTKViewDelegate, NSMenuItemValidation {
 
     @objc func toggleBackgroundBlur(_ sender: Any?) {
         scene.metalRenderer.backgroundBlurEnabled.toggle()
-        if isInFullscreen {
-            if scene.metalRenderer.backgroundBlurEnabled {
-                scene.captureBlurredDesktop(screen: window?.screen ?? NSScreen.main)
-            } else {
-                scene.metalRenderer.backgroundTexture = nil
-            }
+        if scene.metalRenderer.backgroundBlurEnabled {
+            scene.captureBlurredDesktop(screen: window?.screen ?? NSScreen.main)
+        } else {
+            scene.metalRenderer.backgroundTexture = nil
         }
-        applyBlurVisualState()
     }
+
+    // Blur intensity (CIFilter sigma)
+    @objc func setBlurLight(_ sender: Any?)  { setBlurSigma(10) }
+    @objc func setBlurMedium(_ sender: Any?) { setBlurSigma(30) }
+    @objc func setBlurHeavy(_ sender: Any?)  { setBlurSigma(50) }
+
+    private func setBlurSigma(_ sigma: Float) {
+        scene.metalRenderer.blurSigma = sigma
+        if scene.metalRenderer.backgroundBlurEnabled {
+            scene.captureBlurredDesktop(screen: window?.screen ?? NSScreen.main)
+        }
+    }
+
+    // Darkness level (unified across windowed and fullscreen)
+    @objc func setDarknessLight(_ sender: Any?)  { scene.metalRenderer.backgroundDarkness = 0.50 }
+    @objc func setDarknessMedium(_ sender: Any?) { scene.metalRenderer.backgroundDarkness = 0.65 }
+    @objc func setDarknessHeavy(_ sender: Any?)  { scene.metalRenderer.backgroundDarkness = 0.80 }
 
     @objc private func didEnterFullscreen(_ notification: Notification) {
         isInFullscreen = true
-        applyBlurVisualState()
         if scene.metalRenderer.backgroundBlurEnabled {
             scene.captureBlurredDesktop(screen: window?.screen ?? NSScreen.main)
         }
@@ -328,24 +352,8 @@ class MatrixView: NSView, MTKViewDelegate, NSMenuItemValidation {
 
     @objc private func didExitFullscreen(_ notification: Notification) {
         isInFullscreen = false
-        scene.metalRenderer.backgroundTexture = nil
-        applyBlurVisualState()
-    }
-
-    // MARK: - Blur visual state
-
-    private func applyBlurVisualState() {
-        let active = rendererMode == .metal
-            && scene.metalRenderer.backgroundBlurEnabled && !isInFullscreen
-        scene.metalRenderer.isFullscreen = isInFullscreen
-
-        backgroundEffectView?.isHidden = !active
-        scene.mtkView.layer?.isOpaque = !active
-        scene.mtkView.layer?.backgroundColor = active ? CGColor.clear : NSColor.black.cgColor
-
-        if let window = window {
-            window.isOpaque = !active
-            window.backgroundColor = active ? .clear : .black
+        if scene.metalRenderer.backgroundBlurEnabled {
+            scene.captureBlurredDesktop(screen: window?.screen ?? NSScreen.main)
         }
     }
 }
