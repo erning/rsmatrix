@@ -6,14 +6,10 @@ enum RendererMode {
     case coreText
 }
 
-class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
-    private(set) var metalRenderer: MetalRenderer
-    private var simulation: OpaquePointer?
-    private var lastFrameTime: TimeInterval = 0
-    private var gridWidth: UInt32 = 0
-    private var gridHeight: UInt32 = 0
-    private var fontSize: CGFloat = 14
+class MatrixView: NSView, MTKViewDelegate, NSMenuItemValidation {
+    private(set) var scene: MetalSceneController
     var currentCharset: UInt32 = 0
+    private var fontSize: CGFloat = 14
     private var isInFullscreen = false
     private var lastBackingScale: CGFloat = 0
 
@@ -36,20 +32,24 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
     }
 
     init(frame: NSRect, metalDevice: MTLDevice) {
-        self.metalRenderer = MetalRenderer(device: metalDevice, fontSize: fontSize)
-        super.init(frame: frame, device: metalDevice)
+        let config = RenderConfig(fontSize: fontSize)
+        self.scene = MetalSceneController(device: metalDevice, config: config)
+        super.init(frame: frame)
 
-        colorPixelFormat = .bgra8Unorm
-        clearColor = MTLClearColorMake(0, 0, 0, 1)
-        updatePreferredFrameRate()
-        delegate = self
+        scene.mtkView.frame = bounds
+        scene.mtkView.autoresizingMask = [.width, .height]
+        scene.mtkView.delegate = self
+        scene.mtkView.wantsLayer = true
+        scene.mtkView.layer?.isOpaque = false
+        scene.mtkView.layer?.backgroundColor = CGColor.clear
+        addSubview(scene.mtkView)
 
-        wantsLayer = true
-        layer?.isOpaque = false
-        layer?.backgroundColor = CGColor.clear
+        scene.updatePreferredFrameRate(for: nil)
+        scene.mtkView.isPaused = false
+        scene.mtkView.enableSetNeedsDisplay = false
 
-        recalculateGrid()
-        lastFrameTime = CACurrentMediaTime()
+        scene.recalculateGrid(bounds: bounds.size)
+        scene.simulation.resetFrameTime()
     }
 
     @available(*, unavailable)
@@ -57,17 +57,10 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
         fatalError("init(coder:) is not supported")
     }
 
-    deinit {
-        if let sim = simulation {
-            rsmatrix_destroy(sim)
-        }
-    }
-
     // MARK: - MTKViewDelegate
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
-        metalRenderer.resizeOffscreenTextures(
-            width: Int(size.width), height: Int(size.height))
+        scene.resizeOffscreenTextures(size: size)
         if rendererMode == .coreText {
             bitmapWidth = 0
             bitmapHeight = 0
@@ -75,24 +68,11 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
     }
 
     func draw(in view: MTKView) {
-        let now = CACurrentMediaTime()
-        let delta = now - lastFrameTime
-        lastFrameTime = now
-        let deltaMs = UInt32(min(delta * 1000.0, 1000.0))
-
-        if let sim = simulation, deltaMs > 0 {
-            rsmatrix_tick(sim, deltaMs)
-        }
-
-        guard let sim = simulation else { return }
-        let grid = rsmatrix_get_grid(sim)
-        let w = rsmatrix_grid_width(sim)
-        let h = rsmatrix_grid_height(sim)
+        scene.advanceFrame()
 
         switch rendererMode {
         case .metal:
-            metalRenderer.updateInstances(grid: grid, width: w, height: h)
-            metalRenderer.render(in: self)
+            scene.render(in: view)
 
         case .coreText:
             guard let ctRenderer = coreTextRenderer else { return }
@@ -103,34 +83,35 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
             ctx.saveGState()
             ctx.resetClip()
             let unscaledRect = CGRect(x: 0, y: 0, width: bitmapWidth, height: bitmapHeight)
-            // Reset CTM to identity for pixel-level clear
             let ctm = ctx.ctm
             ctx.concatenate(ctm.inverted())
             ctx.setFillColor(red: 0, green: 0, blue: 0, alpha: 1)
             ctx.fill(unscaledRect)
-            // Restore scaled CTM
             ctx.concatenate(ctm)
             ctx.restoreGState()
 
             // Render glyphs
-            ctRenderer.render(context: ctx, grid: grid, width: w, height: h)
+            let sim = scene.simulation
+            guard let s = sim.simulation else { return }
+            let grid = rsmatrix_get_grid(s)
+            ctRenderer.render(context: ctx, grid: grid, width: sim.gridWidth, height: sim.gridHeight)
 
             // Upload bitmap to Metal texture and present
             if let data = ctx.data {
-                metalRenderer.ensureBlitTexture(width: bitmapWidth, height: bitmapHeight)
-                metalRenderer.advanceBlitTexture()
+                scene.metalRenderer.ensureBlitTexture(width: bitmapWidth, height: bitmapHeight)
+                scene.metalRenderer.advanceBlitTexture()
                 let region = MTLRegionMake2D(0, 0, bitmapWidth, bitmapHeight)
-                metalRenderer.blitTexture?.replace(
+                scene.metalRenderer.blitTexture?.replace(
                     region: region, mipmapLevel: 0,
                     withBytes: data, bytesPerRow: bitmapWidth * 4)
-                metalRenderer.renderBlit(in: self)
+                scene.metalRenderer.renderBlit(in: view)
             }
         }
     }
 
     private func ensureBitmapContext() {
-        let dw = Int(drawableSize.width)
-        let dh = Int(drawableSize.height)
+        let dw = Int(scene.mtkView.drawableSize.width)
+        let dh = Int(scene.mtkView.drawableSize.height)
         guard dw > 0 && dh > 0 else { return }
         guard dw != bitmapWidth || dh != bitmapHeight else { return }
 
@@ -143,7 +124,6 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
             space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
 
-        // Scale for Retina so CoreText draws in points
         let scale = window?.backingScaleFactor ?? 2.0
         bitmapContext?.scaleBy(x: scale, y: scale)
     }
@@ -151,9 +131,9 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if let window = window {
-            lastFrameTime = CACurrentMediaTime()
+            scene.simulation.resetFrameTime()
             lastBackingScale = window.backingScaleFactor
-            updatePreferredFrameRate()
+            scene.updatePreferredFrameRate(for: window.screen)
             NotificationCenter.default.addObserver(
                 self, selector: #selector(screenDidChange),
                 name: NSWindow.didChangeScreenNotification, object: window)
@@ -174,10 +154,10 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
     }
 
     @objc private func screenDidChange(_ notification: Notification) {
-        updatePreferredFrameRate()
+        scene.updatePreferredFrameRate(for: window?.screen)
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
         if scale != lastBackingScale && lastBackingScale != 0 {
-            metalRenderer.buildAtlas(scaleFactor: scale)
+            scene.metalRenderer.buildAtlas(scaleFactor: scale)
             if rendererMode == .coreText {
                 bitmapWidth = 0
                 bitmapHeight = 0
@@ -185,18 +165,9 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
             recalculateGrid()
         }
         lastBackingScale = scale
-        if isInFullscreen && metalRenderer.backgroundBlurEnabled {
-            captureAndBlurDesktop()
+        if isInFullscreen && scene.metalRenderer.backgroundBlurEnabled {
+            scene.captureBlurredDesktop(screen: window?.screen ?? NSScreen.main)
         }
-    }
-
-    // MARK: - Frame Rate
-
-    private func updatePreferredFrameRate() {
-        preferredFramesPerSecond = MetalRenderer.displayRefreshRate(
-            for: window?.screen ?? NSScreen.main)
-        isPaused = false
-        enableSetNeedsDisplay = false
     }
 
     // MARK: - Resize
@@ -206,32 +177,13 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
         recalculateGrid()
     }
 
-    private func recalculateGrid() {
-        let cs = rendererMode == .coreText
-            ? (coreTextRenderer?.cellSize ?? metalRenderer.cellSize)
-            : metalRenderer.cellSize
-        let newWidth = max(UInt32(bounds.width / cs.width), 1)
-        let newHeight = max(UInt32(bounds.height / cs.height), 1)
-
-        if newWidth == gridWidth && newHeight == gridHeight { return }
-
-        gridWidth = newWidth
-        gridHeight = newHeight
-
-        if let sim = simulation {
-            rsmatrix_resize(sim, gridWidth, gridHeight)
-        } else {
-            simulation = rsmatrix_create(gridWidth, gridHeight)
-        }
-    }
-
     // MARK: - Keyboard
 
     override func keyDown(with event: NSEvent) {
         guard let chars = event.charactersIgnoringModifiers else { return }
         switch chars {
         case "c":
-            if let sim = simulation { rsmatrix_clear(sim) }
+            scene.simulation.clear()
         case "\u{1b}":  // Escape
             if let w = window, w.styleMask.contains(.fullScreen) {
                 w.toggleFullScreen(nil)
@@ -262,13 +214,13 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
         case #selector(setRendererCoreText):
             menuItem.state = rendererMode == .coreText ? .on : .off
         case #selector(toggleBloom):
-            menuItem.state = metalRenderer.bloomEnabled ? .on : .off
+            menuItem.state = scene.metalRenderer.bloomEnabled ? .on : .off
             return rendererMode == .metal
         case #selector(toggleCRT):
-            menuItem.state = metalRenderer.crtEnabled ? .on : .off
+            menuItem.state = scene.metalRenderer.crtEnabled ? .on : .off
             return rendererMode == .metal
         case #selector(toggleBackgroundBlur):
-            menuItem.state = metalRenderer.backgroundBlurEnabled ? .on : .off
+            menuItem.state = scene.metalRenderer.backgroundBlurEnabled ? .on : .off
             return rendererMode == .metal
         default:
             break
@@ -318,22 +270,28 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
 
     private func rebuildRenderer() {
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
-        metalRenderer.rebuildForFontSize(fontSize, scaleFactor: scale)
+        scene.metalRenderer.rebuildForFontSize(fontSize, scaleFactor: scale)
         if rendererMode == .coreText {
             coreTextRenderer = MatrixRenderer(fontSize: fontSize)
             bitmapWidth = 0
             bitmapHeight = 0
         }
         recalculateGrid()
-        metalRenderer.resizeOffscreenTextures(
-            width: Int(drawableSize.width), height: Int(drawableSize.height))
+        scene.resizeOffscreenTextures(size: scene.mtkView.drawableSize)
         updateContentMinSize()
+    }
+
+    private func recalculateGrid() {
+        let cs = rendererMode == .coreText
+            ? (coreTextRenderer?.cellSize ?? scene.metalRenderer.cellSize)
+            : scene.metalRenderer.cellSize
+        scene.simulation.recalculateGrid(bounds: bounds.size, cellSize: cs)
     }
 
     private func updateContentMinSize() {
         let cs = rendererMode == .coreText
-            ? (coreTextRenderer?.cellSize ?? metalRenderer.cellSize)
-            : metalRenderer.cellSize
+            ? (coreTextRenderer?.cellSize ?? scene.metalRenderer.cellSize)
+            : scene.metalRenderer.cellSize
         window?.contentMinSize = NSSize(
             width: cs.width * 20, height: cs.height * 10)
     }
@@ -341,20 +299,20 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
     // MARK: - Effects
 
     @objc func toggleBloom(_ sender: Any?) {
-        metalRenderer.bloomEnabled.toggle()
+        scene.metalRenderer.bloomEnabled.toggle()
     }
 
     @objc func toggleCRT(_ sender: Any?) {
-        metalRenderer.crtEnabled.toggle()
+        scene.metalRenderer.crtEnabled.toggle()
     }
 
     @objc func toggleBackgroundBlur(_ sender: Any?) {
-        metalRenderer.backgroundBlurEnabled.toggle()
+        scene.metalRenderer.backgroundBlurEnabled.toggle()
         if isInFullscreen {
-            if metalRenderer.backgroundBlurEnabled {
-                captureAndBlurDesktop()
+            if scene.metalRenderer.backgroundBlurEnabled {
+                scene.captureBlurredDesktop(screen: window?.screen ?? NSScreen.main)
             } else {
-                metalRenderer.backgroundTexture = nil
+                scene.metalRenderer.backgroundTexture = nil
             }
         }
         applyBlurVisualState()
@@ -363,34 +321,27 @@ class MatrixView: MTKView, MTKViewDelegate, NSMenuItemValidation {
     @objc private func didEnterFullscreen(_ notification: Notification) {
         isInFullscreen = true
         applyBlurVisualState()
-        if metalRenderer.backgroundBlurEnabled {
-            captureAndBlurDesktop()
+        if scene.metalRenderer.backgroundBlurEnabled {
+            scene.captureBlurredDesktop(screen: window?.screen ?? NSScreen.main)
         }
     }
 
     @objc private func didExitFullscreen(_ notification: Notification) {
         isInFullscreen = false
-        metalRenderer.backgroundTexture = nil
+        scene.metalRenderer.backgroundTexture = nil
         applyBlurVisualState()
     }
 
-    // MARK: - Wallpaper capture
-
-    private func captureAndBlurDesktop() {
-        guard let device = self.device else { return }
-        let screen = window?.screen ?? NSScreen.main
-        metalRenderer.backgroundTexture = MetalRenderer.captureBlurredDesktop(
-            device: device, screen: screen)
-    }
+    // MARK: - Blur visual state
 
     private func applyBlurVisualState() {
         let active = rendererMode == .metal
-            && metalRenderer.backgroundBlurEnabled && !isInFullscreen
-        metalRenderer.isFullscreen = isInFullscreen
+            && scene.metalRenderer.backgroundBlurEnabled && !isInFullscreen
+        scene.metalRenderer.isFullscreen = isInFullscreen
 
         backgroundEffectView?.isHidden = !active
-        layer?.isOpaque = !active
-        layer?.backgroundColor = active ? CGColor.clear : NSColor.black.cgColor
+        scene.mtkView.layer?.isOpaque = !active
+        scene.mtkView.layer?.backgroundColor = active ? CGColor.clear : NSColor.black.cgColor
 
         if let window = window {
             window.isOpaque = !active

@@ -47,8 +47,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.appearance = NSAppearance(named: .darkAqua)
         window.contentView = containerView
         window.contentMinSize = NSSize(
-            width: matrixView.metalRenderer.cellSize.width * 20,
-            height: matrixView.metalRenderer.cellSize.height * 10
+            width: matrixView.scene.metalRenderer.cellSize.width * 20,
+            height: matrixView.scene.metalRenderer.cellSize.height * 10
         )
         window.tabbingMode = .disallowed
         window.collectionBehavior = .fullScreenPrimary
