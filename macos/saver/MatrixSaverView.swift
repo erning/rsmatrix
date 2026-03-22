@@ -1,6 +1,24 @@
 import ScreenSaver
 import MetalKit
 
+// Known issues on macOS Sonoma (14) and later:
+//
+// Apple replaced the native screensaver host with legacyScreenSaver.appex,
+// introducing several regressions that affect all third-party .saver bundles:
+//
+// - isPreview is unreliable (always true on Sonoma, inverted on Tahoe)
+// - stopAnimation() is not called during normal fullscreen operation
+// - Instances accumulate without being destroyed
+// - legacyScreenSaver process does not terminate after the screensaver stops
+// - Preview is disabled (guard !isPreview) to avoid rendering in broken state
+//
+// Community workarounds (exit(0) on willstop notification, instance deduplication)
+// have been tried but do not reliably fix the process lifecycle issues.
+//
+// The standalone app (make run-app) is the recommended alternative on Sonoma+.
+// See: https://github.com/JohnCoates/Aerial/issues — Aerial's issue tracker
+//      documents the same regressions across Sonoma/Sequoia/Tahoe.
+
 private let bundleID = "com.rsmatrix.MatrixSaver"
 private let prefCharset  = "Charset"         // "combined", "ascii", "kana"
 private let prefFontSize = "FontSize"        // Int (10,12,14,16,18,20,24)

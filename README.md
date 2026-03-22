@@ -123,6 +123,12 @@ Then open **System Settings > Screen Saver** to select MatrixSaver. Click **Opti
 - **Font Size**: 10–24 pt
 - **Effects**: Bloom, CRT scanlines, Background Blur (wallpaper)
 
+> **Note:** On macOS Sonoma (14) and later, Apple's `legacyScreenSaver.appex`
+> compatibility layer has known issues that affect all third-party screensavers
+> (process not terminating, instances leaking, preview broken). The screensaver
+> still works for fullscreen display but may leave a background process running.
+> The standalone app (`make run-app`) is the recommended alternative.
+
 ## Project Structure
 
 | Crate / Directory | Purpose |
