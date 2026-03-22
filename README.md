@@ -2,7 +2,7 @@
 
 Matrix digital rain in your terminal, written in Rust.
 
-<!-- TODO: screenshot / demo gif -->
+![rsmatrix macOS app](docs/screenshot.png)
 
 ## Features
 
